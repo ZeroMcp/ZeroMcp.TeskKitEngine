@@ -72,13 +72,9 @@ Thin wrappers that generate test definitions and invoke the core engine.
 
 | Initial languages |
 | ------- |
-
 | .NET (ZeroMCP.TestKit) |
-
 | Node.js (ZeroMCP.TestKit.Node) |
-
 | Python (ZeroMCP.TestKit.Py) |
-
 | Go (ZeroMCP.TestKit.Go) |
 
 
