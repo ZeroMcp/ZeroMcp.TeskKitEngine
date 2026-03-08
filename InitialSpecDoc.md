@@ -80,18 +80,18 @@ Thin wrappers that generate test definitions and invoke the core engine.
 
 #### Responsibilities
 
-Provide fluent, expressive test definitions.
+- Provide fluent, expressive test definitions.
 
-Serialize test definitions to JSON.
+- Serialize test definitions to JSON.
 
-Invoke the core engine (process or FFI).
+- Invoke the core engine (process or FFI).
 
-Parse results and integrate with native test frameworks.
+- Parse results and integrate with native test frameworks.
 
-Provide idiomatic assertion styles.
+- Provide idiomatic assertion styles.
 
 #### Example (.NET)
-
+```csharp
 await McpTest
     .Server("ws://localhost:8000")
     .Tool("search")
@@ -99,9 +99,9 @@ await McpTest
         .ExpectSchemaMatch()
         .ExpectDeterministic()
     .RunAsync();
-
+```
 #### Example (Node)
-
+```node
 await mcpTest()
   .server("ws://localhost:8000")
   .tool("search")
@@ -109,7 +109,7 @@ await mcpTest()
     .expectSchemaValid()
     .expectDeterministic()
   .run();
-
+```
 ### 2.3 Runners and Integrations
 
 Optional components that wrap the core engine for different environments.
@@ -139,7 +139,7 @@ tests — array of test cases.
 config — optional settings (timeouts, retries, determinism runs).
 
 ### 3.2 Example
-
+```json
 {
   "server": "ws://localhost:8000",
   "tests": [
@@ -154,9 +154,9 @@ config — optional settings (timeouts, retries, determinism runs).
     }
   ]
 }
-
+```
 ### 3.3 Expected Result Format
-
+```json
 {
   "status": "passed",
   "results": [
@@ -170,7 +170,7 @@ config — optional settings (timeouts, retries, determinism runs).
     }
   ]
 }
-
+```
 ## 4. Test Categories
 
 ### 4.1 Protocol Validation
