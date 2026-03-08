@@ -6,15 +6,15 @@ ZeroMCP.TestKit provides a unified, language‑agnostic suite for validating MCP
 
 The goal is to make MCP server validation:
 
-Deterministic across repeated runs.
+- Deterministic across repeated runs.
 
-Protocol‑correct in handshake, frames, errors, and streaming.
+- Protocol‑correct in handshake, frames, errors, and streaming.
 
-Schema‑accurate for tool metadata and results.
+- Schema‑accurate for tool metadata and results.
 
-Interoperable across languages and runtimes.
+- Interoperable across languages and runtimes.
 
-Relay‑safe when routed through ZeroMCP.Relay.
+- Relay‑safe when routed through ZeroMCP.Relay.
 
 ZeroMCP.TestKit becomes the canonical correctness oracle for the entire ecosystem.
 
@@ -26,59 +26,61 @@ A language‑neutral executable responsible for executing MCP protocol tests. It
 
 #### Responsibilities
 
-Connect to MCP servers (direct or via relay).
+- Connect to MCP servers (direct or via relay).
 
-Validate handshake and session lifecycle.
+- Validate handshake and session lifecycle.
 
-Execute tool calls with provided parameters.
+- Execute tool calls with provided parameters.
 
-Validate JSON schema compliance.
+- Validate JSON schema compliance.
 
-Validate streaming semantics and chunk ordering.
+- Validate streaming semantics and chunk ordering.
 
-Validate cancellation behaviour.
+- Validate cancellation behaviour.
 
-Validate concurrency handling.
+- Validate concurrency handling.
 
-Validate determinism across repeated runs.
+- Validate determinism across repeated runs.
 
-Validate error frames and error codes.
+- Validate error frames and error codes.
 
-Validate metadata stability.
+- Validate metadata stability.
 
-Validate relay passthrough behaviour.
+- Validate relay passthrough behaviour.
 
 #### Non‑Responsibilities
 
-Test discovery.
+- Test discovery.
 
-Reporting formats beyond JSON.
+- Reporting formats beyond JSON.
 
-Language‑specific DSLs.
+- Language‑specific DSLs.
 
-Business logic validation.
+- Business logic validation.
 
-Implementation Notes
+#### Implementation Notes
 
-Rust preferred for portability, safety, and performance.
+- Rust preferred for portability, safety, and performance.
 
-Outputs deterministic JSON for CI and tooling integration.
+- Outputs deterministic JSON for CI and tooling integration.
 
-Single static binary with no runtime dependencies.
+- Single static binary with no runtime dependencies.
 
 ### 2.2 Language-Specific Fluent DSLs
 
-Thin wrappers that generate test definitions and invoke the core engine.
+- Thin wrappers that generate test definitions and invoke the core engine.
 
-#### Initial languages
+| Initial languages |
+|---|
 
-.NET (ZeroMCP.TestKit)
+| .NET (ZeroMCP.TestKit) |
 
-Node.js (ZeroMCP.TestKit.Node)
+| Node.js (ZeroMCP.TestKit.Node) |
 
-Python (ZeroMCP.TestKit.Py)
+| Python (ZeroMCP.TestKit.Py) |
 
-Go (ZeroMCP.TestKit.Go)
+| Go (ZeroMCP.TestKit.Go) |
+
 
 #### Responsibilities
 
