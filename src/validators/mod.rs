@@ -1,5 +1,6 @@
 pub mod determinism;
 pub mod error_path;
+pub mod metadata;
 pub mod protocol_val;
 pub mod schema;
 

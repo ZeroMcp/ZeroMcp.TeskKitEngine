@@ -8,10 +8,12 @@ Universal testing toolkit for MCP (Model Context Protocol) servers. Validates an
 
 ## Features
 
-- **Protocol validation** — handshake, session lifecycle, frame structure, error codes
+- **Protocol validation** — handshake, session lifecycle, JSON-RPC frame structure, error codes
 - **Schema validation** — JSON Schema compliance for tool inputs and outputs
-- **Determinism validation** — multi-run comparison with configurable `ignore_paths`
-- **Error path validation** — unknown tools, malformed params, timeouts
+- **Determinism validation** — multi-run comparison with full JSONPath `ignore_paths` support
+- **Error path validation** — unknown tools, malformed params, expected error codes
+- **Tool metadata validation** — checks all tools have name, description, and valid inputSchema
+- **Auto error-path testing** — automatically tests unknown tool rejection and malformed param handling
 - **Test generation** — scaffold stubs or known-good baselines from a live server
 - **Recording & replay** — capture sessions for offline CI and debugging
 - **Baseline diffing** — detect schema drift between releases
@@ -35,6 +37,26 @@ cargo install --path .
 
 ```bash
 mcptest run --file tests.json --server http://localhost:8000/mcp
+```
+
+### Run with advanced validation
+
+```bash
+mcptest run --file tests.json --server http://localhost:8000/mcp \
+  --validate-protocol --validate-metadata --auto-error-tests
+```
+
+### Record a session
+
+```bash
+mcptest run --file tests.json --server http://localhost:8000/mcp \
+  --record session.json
+```
+
+### Replay a recorded session (offline)
+
+```bash
+mcptest run --file tests.json --replay session.json
 ```
 
 ### Generate scaffold
@@ -73,7 +95,14 @@ mcptest diff --baseline baseline.json --server http://localhost:8000/mcp
         "ignore_paths": ["$.result.timestamp"]
       }
     }
-  ]
+  ],
+  "config": {
+    "timeout_ms": 30000,
+    "determinism_runs": 3,
+    "validate_protocol": true,
+    "validate_metadata": true,
+    "auto_error_tests": true
+  }
 }
 ```
 
@@ -110,7 +139,19 @@ mcptest diff --baseline baseline.json --server http://localhost:8000/mcp
 |----------|-------------------|
 | Streamable HTTP + SSE | `http://localhost:8000/mcp` or `https://...` |
 | stdio | `stdio:python server.py` or just `python server.py` |
-| WebSocket | `ws://localhost:8000/mcp` or `wss://...` |
+| WebSocket | `ws://localhost:8000/mcp` or `wss://...` (planned) |
+
+## Validators
+
+| Validator | Config key | What it checks |
+|-----------|-----------|---------------|
+| Schema | `schema_valid: true` | Tool output conforms to declared JSON Schema |
+| Determinism | `deterministic: true` | Repeated calls produce identical results (after `ignore_paths` stripping) |
+| Protocol | `validate_protocol: true` | Handshake correctness, JSON-RPC frame validity |
+| Metadata | `validate_metadata: true` | All tools have name, description, valid inputSchema |
+| Error path | `expect_error: true` | Tool call returns an error response |
+| Error code | `expect_error_code: -32601` | Error response has a specific JSON-RPC error code |
+| Auto errors | `auto_error_tests: true` | Auto-generates tests for unknown tool + malformed params |
 
 ## Architecture
 
@@ -118,12 +159,12 @@ mcptest diff --baseline baseline.json --server http://localhost:8000/mcp
 CLI (clap)
   └── Engine
        ├── Test Definition Parser (JSON Schema validated)
-       ├── Transport Layer (stdio, HTTP+SSE)
+       ├── Transport Layer (stdio, HTTP+SSE, recording middleware)
        ├── MCP Protocol Client (JSON-RPC 2.0)
        │    └── Session State Machine
-       ├── Validators (schema, determinism, protocol, error path)
+       ├── Validators (schema, determinism, protocol, error path, metadata)
        ├── Test Generator (scaffold, known-good)
-       ├── Recorder / Replay
+       ├── Recorder / Replay (session capture + offline testing)
        └── Diff Engine (baseline comparison)
 ```
 

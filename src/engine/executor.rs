@@ -3,12 +3,12 @@ use std::time::Instant;
 use anyhow::{Context, Result};
 use serde_json::Value;
 
-use crate::definition::{Expectation, TestConfig, TestDefinition};
+use crate::definition::{Expectation, TestCase, TestConfig, TestDefinition};
 use crate::engine::result::{
     ErrorCategory, RunStatus, TestRunResult, ToolTestResult, ValidationError,
 };
 use crate::protocol::client::McpClient;
-use crate::protocol::mcp::Tool;
+use crate::protocol::mcp::{InitializeResult, Tool};
 use crate::validators;
 
 /// Orchestrates the execution of all test cases in a definition against
@@ -26,20 +26,96 @@ impl TestExecutor {
 
     /// Execute all test cases and return the aggregated result.
     /// The client must already be initialized (session Ready).
-    pub async fn run(&self, client: &mut McpClient) -> Result<TestRunResult> {
+    pub async fn run(
+        &self,
+        client: &mut McpClient,
+        init_result: Option<&InitializeResult>,
+    ) -> Result<TestRunResult> {
         let start = Instant::now();
+        let mut results: Vec<ToolTestResult> = Vec::new();
+        let mut any_failed = false;
+
+        // --- Protocol validation (pre-flight) ---
+        if self.config.validate_protocol {
+            if let Some(init) = init_result {
+                let protocol_errors = validators::protocol_val::validate_initialize_response(init);
+                if !protocol_errors.is_empty() {
+                    any_failed = true;
+                    results.push(ToolTestResult {
+                        tool: "__protocol_handshake__".to_string(),
+                        passed: false,
+                        schema_valid: None,
+                        deterministic: None,
+                        stream_chunks: None,
+                        errors: protocol_errors,
+                        elapsed_ms: 0,
+                    });
+                }
+            }
+        }
 
         let tools = client
             .tools_list()
             .await
             .context("Failed to list tools from server")?;
 
+        // --- Tool metadata validation (pre-flight) ---
+        if self.config.validate_metadata {
+            let meta_errors = validators::metadata::validate_tool_metadata(&tools);
+            if !meta_errors.is_empty() {
+                any_failed = true;
+                results.push(ToolTestResult {
+                    tool: "__tool_metadata__".to_string(),
+                    passed: false,
+                    schema_valid: None,
+                    deterministic: None,
+                    stream_chunks: None,
+                    errors: meta_errors,
+                    elapsed_ms: 0,
+                });
+            }
+        }
+
         let tool_map: std::collections::HashMap<&str, &Tool> =
             tools.iter().map(|t| (t.name.as_str(), t)).collect();
 
-        let mut results: Vec<ToolTestResult> = Vec::new();
-        let mut any_failed = false;
+        // --- Auto error-path tests ---
+        if self.config.auto_error_tests {
+            let auto_cases = generate_auto_error_tests(&tools);
+            for auto_case in &auto_cases {
+                let case_start = Instant::now();
+                let result = self
+                    .run_error_path_case(client, auto_case)
+                    .await;
+                let elapsed = case_start.elapsed().as_millis() as u64;
 
+                let tool_test_result = match result {
+                    Ok(mut r) => {
+                        r.elapsed_ms = elapsed;
+                        r
+                    }
+                    Err(e) => ToolTestResult {
+                        tool: auto_case.tool.clone(),
+                        passed: false,
+                        schema_valid: None,
+                        deterministic: None,
+                        stream_chunks: None,
+                        errors: vec![ValidationError {
+                            category: ErrorCategory::Internal,
+                            message: format!("{:#}", e),
+                            context: None,
+                        }],
+                        elapsed_ms: elapsed,
+                    },
+                };
+                if !tool_test_result.passed {
+                    any_failed = true;
+                }
+                results.push(tool_test_result);
+            }
+        }
+
+        // --- User-defined test cases ---
         for test_case in &self.definition.tests {
             let case_start = Instant::now();
             let timeout = test_case
@@ -51,7 +127,13 @@ impl TestExecutor {
 
             let tool_result = tokio::time::timeout(
                 std::time::Duration::from_millis(timeout),
-                self.run_single(client, &test_case.tool, &test_case.params, &test_case.expect, tool_map.get(test_case.tool.as_str()).copied()),
+                self.run_single(
+                    client,
+                    &test_case.tool,
+                    &test_case.params,
+                    &test_case.expect,
+                    tool_map.get(test_case.tool.as_str()).copied(),
+                ),
             )
             .await;
 
@@ -125,13 +207,22 @@ impl TestExecutor {
 
         // --- Error path testing: expect an error response ---
         if expect.expect_error || expect.expect_error_code.is_some() {
-            let response = client.raw_request(
-                "tools/call",
-                Some(serde_json::json!({ "name": tool_name, "arguments": params })),
-            ).await.context("Failed to send error-path request")?;
+            let response = client
+                .raw_request(
+                    "tools/call",
+                    Some(serde_json::json!({ "name": tool_name, "arguments": params })),
+                )
+                .await
+                .context("Failed to send error-path request")?;
+
+            // Validate JSON-RPC frame if protocol validation is on
+            if self.config.validate_protocol {
+                errors.extend(validators::protocol_val::validate_jsonrpc_frame(&response));
+            }
 
             if let Some(code) = expect.expect_error_code {
-                let mut e = validators::error_path::validate_error_code(tool_name, &response, code);
+                let mut e =
+                    validators::error_path::validate_error_code(tool_name, &response, code);
                 errors.append(&mut e);
             } else {
                 let mut e = validators::error_path::validate_is_error(tool_name, &response);
@@ -168,8 +259,11 @@ impl TestExecutor {
         // --- Schema validation ---
         if expect.schema_valid {
             if let Some(tool) = tool_descriptor {
-                let schema_errors =
-                    validators::schema::validate_tool_output(tool_name, &tool.input_schema, &response_value);
+                let schema_errors = validators::schema::validate_tool_output(
+                    tool_name,
+                    &tool.input_schema,
+                    &response_value,
+                );
                 schema_valid_result = Some(schema_errors.is_empty());
                 errors.extend(schema_errors);
             } else {
@@ -195,12 +289,19 @@ impl TestExecutor {
                 let re_result = client
                     .tools_call(tool_name, params.clone())
                     .await
-                    .context(format!("Determinism re-run {} failed for '{}'", i + 1, tool_name))?;
+                    .context(format!(
+                        "Determinism re-run {} failed for '{}'",
+                        i + 1,
+                        tool_name
+                    ))?;
                 responses.push(serde_json::to_value(&re_result)?);
             }
 
-            let det_errors =
-                validators::determinism::validate_determinism(tool_name, &responses, &expect.ignore_paths);
+            let det_errors = validators::determinism::validate_determinism(
+                tool_name,
+                &responses,
+                &expect.ignore_paths,
+            );
             deterministic_result = Some(det_errors.is_empty());
             errors.extend(det_errors);
         }
@@ -215,6 +316,87 @@ impl TestExecutor {
             elapsed_ms: 0,
         })
     }
+
+    /// Execute a single auto-generated error-path test case.
+    async fn run_error_path_case(
+        &self,
+        client: &mut McpClient,
+        test_case: &TestCase,
+    ) -> Result<ToolTestResult> {
+        let response = client
+            .raw_request(
+                "tools/call",
+                Some(serde_json::json!({
+                    "name": test_case.tool,
+                    "arguments": test_case.params
+                })),
+            )
+            .await
+            .context(format!(
+                "Auto error-path test failed for '{}'",
+                test_case.tool
+            ))?;
+
+        let mut errors: Vec<ValidationError> = Vec::new();
+
+        if self.config.validate_protocol {
+            errors.extend(validators::protocol_val::validate_jsonrpc_frame(&response));
+        }
+
+        if let Some(code) = test_case.expect.expect_error_code {
+            errors.extend(validators::error_path::validate_error_code(
+                &test_case.tool,
+                &response,
+                code,
+            ));
+        } else {
+            errors.extend(validators::error_path::validate_is_error(
+                &test_case.tool,
+                &response,
+            ));
+        }
+
+        Ok(ToolTestResult {
+            tool: test_case.tool.clone(),
+            passed: errors.is_empty(),
+            schema_valid: None,
+            deterministic: None,
+            stream_chunks: None,
+            errors,
+            elapsed_ms: 0,
+        })
+    }
+}
+
+/// Generate automatic error-path test cases: unknown tool, malformed params.
+fn generate_auto_error_tests(tools: &[Tool]) -> Vec<TestCase> {
+    let mut cases = Vec::new();
+
+    // 1. Unknown tool name — server should return an error
+    cases.push(TestCase {
+        tool: "__mcptest_nonexistent_tool__".to_string(),
+        params: serde_json::json!({}),
+        expect: Expectation {
+            expect_error: true,
+            ..Default::default()
+        },
+        generated: Some(true),
+    });
+
+    // 2. Malformed params for each known tool — send wrong types
+    for tool in tools.iter().take(5) {
+        cases.push(TestCase {
+            tool: tool.name.clone(),
+            params: serde_json::json!("__INVALID_NOT_AN_OBJECT__"),
+            expect: Expectation {
+                expect_error: true,
+                ..Default::default()
+            },
+            generated: Some(true),
+        });
+    }
+
+    cases
 }
 
 #[cfg(test)]
@@ -234,7 +416,20 @@ mod tests {
                 timeout_ms: 5000,
                 determinism_runs: 3,
                 retries: 0,
+                validate_protocol: false,
+                validate_metadata: false,
+                auto_error_tests: false,
             }),
+        }
+    }
+
+    fn make_definition_with_config(tests: Vec<TestCase>, config: TestConfig) -> TestDefinition {
+        TestDefinition {
+            schema_url: None,
+            version: "1".to_string(),
+            server: "mock://test".to_string(),
+            tests,
+            config: Some(config),
         }
     }
 
@@ -247,8 +442,6 @@ mod tests {
         }
     }
 
-    /// Set up a MockTransport pre-loaded with init and tools/list responses,
-    /// then return a ready McpClient.
     async fn ready_client(mock: MockTransport) -> McpClient {
         let mut client = McpClient::new(Box::new(mock));
         client.initialize().await.unwrap();
@@ -259,7 +452,6 @@ mod tests {
     async fn simple_tool_call_passes() {
         let mut mock = MockTransport::new();
         mock.push_response(init_response(1));
-        // tools/list
         mock.push_response(tools_list_response(
             2,
             serde_json::json!([{
@@ -267,18 +459,14 @@ mod tests {
                 "inputSchema": { "type": "object" }
             }]),
         ));
-        // tools/call for the test case
         mock.push_response(tool_call_response(3, "hello"));
 
         let mut client = ready_client(mock).await;
 
-        let def = make_definition(vec![make_test_case(
-            "echo",
-            Expectation::default(),
-        )]);
+        let def = make_definition(vec![make_test_case("echo", Expectation::default())]);
 
         let executor = TestExecutor::new(def);
-        let result = executor.run(&mut client).await.unwrap();
+        let result = executor.run(&mut client, None).await.unwrap();
 
         assert_eq!(result.results.len(), 1);
         assert!(result.results[0].passed);
@@ -313,10 +501,9 @@ mod tests {
         )]);
 
         let executor = TestExecutor::new(def);
-        let result = executor.run(&mut client).await.unwrap();
+        let result = executor.run(&mut client, None).await.unwrap();
 
         assert_eq!(result.results.len(), 1);
-        // schema_valid is set to Some(true/false)
         assert!(result.results[0].schema_valid.is_some());
     }
 
@@ -331,7 +518,6 @@ mod tests {
                 "inputSchema": { "type": "object" }
             }]),
         ));
-        // 3 identical responses (determinism_runs = 3)
         mock.push_response(tool_call_response(3, "same"));
         mock.push_response(tool_call_response(4, "same"));
         mock.push_response(tool_call_response(5, "same"));
@@ -347,7 +533,7 @@ mod tests {
         )]);
 
         let executor = TestExecutor::new(def);
-        let result = executor.run(&mut client).await.unwrap();
+        let result = executor.run(&mut client, None).await.unwrap();
 
         assert_eq!(result.results[0].deterministic, Some(true));
         assert!(result.results[0].passed);
@@ -379,7 +565,7 @@ mod tests {
         )]);
 
         let executor = TestExecutor::new(def);
-        let result = executor.run(&mut client).await.unwrap();
+        let result = executor.run(&mut client, None).await.unwrap();
 
         assert_eq!(result.results[0].deterministic, Some(false));
         assert!(!result.results[0].passed);
@@ -392,7 +578,6 @@ mod tests {
         let mut mock = MockTransport::new();
         mock.push_response(init_response(1));
         mock.push_response(tools_list_response(2, serde_json::json!([])));
-        // raw_request returns an error
         mock.push_response(error_response(3, -32601, "Method not found"));
 
         let mut client = ready_client(mock).await;
@@ -406,7 +591,7 @@ mod tests {
         )]);
 
         let executor = TestExecutor::new(def);
-        let result = executor.run(&mut client).await.unwrap();
+        let result = executor.run(&mut client, None).await.unwrap();
 
         assert!(result.results[0].passed);
     }
@@ -429,7 +614,7 @@ mod tests {
         )]);
 
         let executor = TestExecutor::new(def);
-        let result = executor.run(&mut client).await.unwrap();
+        let result = executor.run(&mut client, None).await.unwrap();
 
         assert!(result.results[0].passed);
         assert!(result.results[0].errors.is_empty());
@@ -453,7 +638,7 @@ mod tests {
         )]);
 
         let executor = TestExecutor::new(def);
-        let result = executor.run(&mut client).await.unwrap();
+        let result = executor.run(&mut client, None).await.unwrap();
 
         assert!(!result.results[0].passed);
         assert_eq!(result.results[0].errors[0].category, ErrorCategory::ErrorPath);
@@ -470,8 +655,6 @@ mod tests {
                 "inputSchema": { "type": "object" }
             }]),
         ));
-        // Don't push a tools/call response — the receive will return Closed,
-        // but the executor wraps it in a timeout.
 
         let mut client = ready_client(mock).await;
 
@@ -479,17 +662,16 @@ mod tests {
             tool: "slow".to_string(),
             params: serde_json::json!({}),
             expect: Expectation {
-                timeout_ms: Some(100), // very short timeout
+                timeout_ms: Some(100),
                 ..Default::default()
             },
             generated: None,
         }]);
 
         let executor = TestExecutor::new(def);
-        let result = executor.run(&mut client).await.unwrap();
+        let result = executor.run(&mut client, None).await.unwrap();
 
         assert!(!result.results[0].passed);
-        // The error should be either a timeout or a transport closed error
         assert!(!result.results[0].errors.is_empty());
     }
 
@@ -515,7 +697,7 @@ mod tests {
         ]);
 
         let executor = TestExecutor::new(def);
-        let result = executor.run(&mut client).await.unwrap();
+        let result = executor.run(&mut client, None).await.unwrap();
 
         assert_eq!(result.results.len(), 2);
         assert!(result.results[0].passed);
@@ -534,7 +716,6 @@ mod tests {
                 "inputSchema": { "type": "object" }
             }]),
         ));
-        // Tool returns isError: true
         mock.push_response(success_response(
             3,
             serde_json::json!({
@@ -545,18 +726,202 @@ mod tests {
 
         let mut client = ready_client(mock).await;
 
-        let def = make_definition(vec![make_test_case(
-            "broken",
-            Expectation::default(),
-        )]);
+        let def = make_definition(vec![make_test_case("broken", Expectation::default())]);
 
         let executor = TestExecutor::new(def);
-        let result = executor.run(&mut client).await.unwrap();
+        let result = executor.run(&mut client, None).await.unwrap();
 
         assert!(!result.results[0].passed);
         assert!(result.results[0]
             .errors
             .iter()
             .any(|e| e.category == ErrorCategory::Protocol));
+    }
+
+    // --- Milestone 4: New tests ---
+
+    #[tokio::test]
+    async fn protocol_validation_catches_bad_handshake() {
+        use crate::protocol::mcp::{Implementation, InitializeResult, ServerCapabilities};
+
+        let mut mock = MockTransport::new();
+        mock.push_response(init_response(1));
+        mock.push_response(tools_list_response(
+            2,
+            serde_json::json!([{"name": "echo", "inputSchema": {"type": "object"}}]),
+        ));
+        mock.push_response(tool_call_response(3, "ok"));
+
+        let mut client = ready_client(mock).await;
+
+        let bad_init = InitializeResult {
+            protocol_version: String::new(),
+            capabilities: ServerCapabilities::default(),
+            server_info: Implementation {
+                name: String::new(),
+                version: "1.0".to_string(),
+            },
+            instructions: None,
+        };
+
+        let config = TestConfig {
+            validate_protocol: true,
+            ..Default::default()
+        };
+        let def = make_definition_with_config(
+            vec![make_test_case("echo", Expectation::default())],
+            config,
+        );
+
+        let executor = TestExecutor::new(def);
+        let result = executor.run(&mut client, Some(&bad_init)).await.unwrap();
+
+        let protocol_result = result
+            .results
+            .iter()
+            .find(|r| r.tool == "__protocol_handshake__");
+        assert!(protocol_result.is_some(), "Should have a protocol result");
+        assert!(!protocol_result.unwrap().passed);
+        assert!(protocol_result.unwrap().errors.iter().any(|e| e.category == ErrorCategory::Protocol));
+    }
+
+    #[tokio::test]
+    async fn metadata_validation_catches_missing_description() {
+        let mut mock = MockTransport::new();
+        mock.push_response(init_response(1));
+        mock.push_response(tools_list_response(
+            2,
+            serde_json::json!([{
+                "name": "nodesc",
+                "inputSchema": {"type": "object"}
+            }]),
+        ));
+        mock.push_response(tool_call_response(3, "ok"));
+
+        let mut client = ready_client(mock).await;
+
+        let config = TestConfig {
+            validate_metadata: true,
+            ..Default::default()
+        };
+        let def = make_definition_with_config(
+            vec![make_test_case("nodesc", Expectation::default())],
+            config,
+        );
+
+        let executor = TestExecutor::new(def);
+        let result = executor.run(&mut client, None).await.unwrap();
+
+        let meta_result = result
+            .results
+            .iter()
+            .find(|r| r.tool == "__tool_metadata__");
+        assert!(meta_result.is_some(), "Should have a metadata result");
+        assert!(meta_result
+            .unwrap()
+            .errors
+            .iter()
+            .any(|e| e.category == ErrorCategory::Metadata));
+    }
+
+    #[tokio::test]
+    async fn auto_error_tests_generate_unknown_tool_test() {
+        let mut mock = MockTransport::new();
+        mock.push_response(init_response(1));
+        mock.push_response(tools_list_response(
+            2,
+            serde_json::json!([{
+                "name": "echo",
+                "description": "Echo tool",
+                "inputSchema": {"type": "object"}
+            }]),
+        ));
+        // Response for unknown tool
+        mock.push_response(error_response(3, -32601, "Tool not found"));
+        // Response for malformed params on "echo"
+        mock.push_response(error_response(4, -32602, "Invalid params"));
+        // Response for the user test case
+        mock.push_response(tool_call_response(5, "ok"));
+
+        let mut client = ready_client(mock).await;
+
+        let config = TestConfig {
+            auto_error_tests: true,
+            ..Default::default()
+        };
+        let def = make_definition_with_config(
+            vec![make_test_case("echo", Expectation::default())],
+            config,
+        );
+
+        let executor = TestExecutor::new(def);
+        let result = executor.run(&mut client, None).await.unwrap();
+
+        let auto_results: Vec<&ToolTestResult> = result
+            .results
+            .iter()
+            .filter(|r| r.tool == "__mcptest_nonexistent_tool__" || r.tool == "echo")
+            .collect();
+
+        assert!(
+            auto_results.len() >= 2,
+            "Should have auto-generated error tests plus user test"
+        );
+    }
+
+    #[tokio::test]
+    async fn protocol_validation_on_error_path_validates_frame() {
+        let mut mock = MockTransport::new();
+        mock.push_response(init_response(1));
+        mock.push_response(tools_list_response(2, serde_json::json!([])));
+        mock.push_response(error_response(3, -32601, "Not found"));
+
+        let mut client = ready_client(mock).await;
+
+        let config = TestConfig {
+            validate_protocol: true,
+            ..Default::default()
+        };
+        let def = make_definition_with_config(
+            vec![make_test_case(
+                "nonexistent",
+                Expectation {
+                    expect_error: true,
+                    ..Default::default()
+                },
+            )],
+            config,
+        );
+
+        let executor = TestExecutor::new(def);
+        let result = executor.run(&mut client, None).await.unwrap();
+
+        // Should pass — valid frame and expected error
+        assert!(result.results.iter().any(|r| r.tool == "nonexistent" && r.passed));
+    }
+
+    #[tokio::test]
+    async fn auto_error_tests_generate_expected_cases() {
+        let tools = vec![
+            Tool {
+                name: "alpha".to_string(),
+                description: Some("Alpha tool".to_string()),
+                input_schema: serde_json::json!({"type": "object"}),
+                annotations: None,
+            },
+            Tool {
+                name: "beta".to_string(),
+                description: Some("Beta tool".to_string()),
+                input_schema: serde_json::json!({"type": "object"}),
+                annotations: None,
+            },
+        ];
+
+        let cases = generate_auto_error_tests(&tools);
+
+        assert!(cases.iter().any(|c| c.tool == "__mcptest_nonexistent_tool__"));
+        assert!(cases.iter().any(|c| c.tool == "alpha" && c.expect.expect_error));
+        assert!(cases.iter().any(|c| c.tool == "beta" && c.expect.expect_error));
+        assert_eq!(cases.len(), 3); // 1 unknown + 2 malformed
     }
 }

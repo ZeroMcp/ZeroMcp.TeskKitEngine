@@ -88,6 +88,18 @@ pub struct TestConfig {
     /// Number of retry attempts on transient failures.
     #[serde(default)]
     pub retries: u32,
+
+    /// Validate MCP protocol correctness (handshake, JSON-RPC frames).
+    #[serde(default)]
+    pub validate_protocol: bool,
+
+    /// Validate tool metadata (name, description, inputSchema presence).
+    #[serde(default)]
+    pub validate_metadata: bool,
+
+    /// Auto-generate error-path tests (unknown tool, malformed params).
+    #[serde(default)]
+    pub auto_error_tests: bool,
 }
 
 impl Default for TestConfig {
@@ -96,6 +108,9 @@ impl Default for TestConfig {
             timeout_ms: default_timeout(),
             determinism_runs: default_determinism_runs(),
             retries: 0,
+            validate_protocol: false,
+            validate_metadata: false,
+            auto_error_tests: false,
         }
     }
 }

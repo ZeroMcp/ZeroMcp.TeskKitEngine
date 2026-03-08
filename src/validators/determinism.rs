@@ -1,5 +1,4 @@
 use serde_json::Value;
-use serde_json_path::JsonPath;
 
 use crate::engine::result::{ErrorCategory, ValidationError};
 
@@ -51,45 +50,136 @@ pub fn validate_determinism(
     errors
 }
 
+/// Remove all fields matching the given JSONPath expressions from a value.
 fn remove_ignored_paths(value: &Value, ignore_paths: &[String]) -> Value {
     let mut cleaned = value.clone();
 
     for path_str in ignore_paths {
-        if let Ok(path) = JsonPath::parse(path_str) {
-            let pointers: Vec<String> = {
-                let nodes = path.query(&cleaned);
-                nodes
-                    .all()
-                    .iter()
-                    .filter_map(|node| value_to_pointer(&cleaned, node))
-                    .collect()
-            };
-            for ptr in &pointers {
-                remove_at_pointer(&mut cleaned, ptr);
-            }
+        let pointers = jsonpath_to_pointers(path_str, &cleaned);
+        // Remove in reverse order so earlier indices stay valid
+        for ptr in pointers.into_iter().rev() {
+            remove_at_pointer(&mut cleaned, &ptr);
         }
     }
 
     cleaned
 }
 
-fn value_to_pointer(_root: &Value, _node: &Value) -> Option<String> {
-    // TODO(m4): Implement proper JSONPath-to-pointer mapping
-    None
+/// Convert a JSONPath expression to a list of JSON Pointer paths that match
+/// in the given value. Uses `query_located` to get both the matched nodes
+/// and their normalized paths, then converts to JSON Pointers.
+fn jsonpath_to_pointers(jsonpath: &str, value: &Value) -> Vec<String> {
+    if let Ok(path) = serde_json_path::JsonPath::parse(jsonpath) {
+        let located = path.query_located(value);
+        let pointers: Vec<String> = located
+            .all()
+            .iter()
+            .map(|node| node.location().to_json_pointer())
+            .collect();
+
+        if !pointers.is_empty() {
+            return pointers;
+        }
+    }
+
+    // Fallback: convert simple dot-notation JSONPath to JSON Pointer.
+    // Handles: $.foo.bar -> /foo/bar, $.foo[0].bar -> /foo/0/bar
+    if let Some(pointer) = simple_jsonpath_to_pointer(jsonpath) {
+        if value.pointer(&pointer).is_some() {
+            return vec![pointer];
+        }
+    }
+
+    vec![]
 }
 
-fn remove_at_pointer(value: &mut Value, pointer: &str) {
-    if let Some((parent_ptr, key)) = pointer.rsplit_once('/') {
-        let parent_ptr = if parent_ptr.is_empty() {
-            "/"
+/// Convert simple JSONPath expressions like `$.foo.bar` or `$.foo[0].bar`
+/// to JSON Pointer format `/foo/bar` or `/foo/0/bar`.
+fn simple_jsonpath_to_pointer(jsonpath: &str) -> Option<String> {
+    let path = jsonpath.strip_prefix('$')?;
+    if path.is_empty() {
+        return Some(String::new());
+    }
+
+    let mut pointer = String::new();
+
+    for segment in path.split('.') {
+        if segment.is_empty() {
+            continue;
+        }
+
+        if let Some(bracket_pos) = segment.find('[') {
+            let key = &segment[..bracket_pos];
+            if !key.is_empty() {
+                pointer.push('/');
+                pointer.push_str(key);
+            }
+
+            let rest = &segment[bracket_pos..];
+            for part in rest.split('[') {
+                if part.is_empty() {
+                    continue;
+                }
+                if let Some(idx_str) = part.strip_suffix(']') {
+                    pointer.push('/');
+                    pointer.push_str(idx_str);
+                }
+            }
         } else {
-            parent_ptr
+            pointer.push('/');
+            pointer.push_str(segment);
+        }
+    }
+
+    Some(pointer)
+}
+
+/// Remove a value at the given JSON Pointer path from the document.
+fn remove_at_pointer(value: &mut Value, pointer: &str) {
+    if pointer.is_empty() {
+        return;
+    }
+
+    let segments: Vec<&str> = pointer
+        .strip_prefix('/')
+        .unwrap_or(pointer)
+        .split('/')
+        .collect();
+
+    if segments.is_empty() {
+        return;
+    }
+
+    let parent_segments = &segments[..segments.len() - 1];
+    let last_key = segments[segments.len() - 1];
+
+    let mut current = value as &mut Value;
+    for seg in parent_segments {
+        current = match current {
+            Value::Object(map) => match map.get_mut(*seg) {
+                Some(v) => v,
+                None => return,
+            },
+            Value::Array(arr) => match seg.parse::<usize>() {
+                Ok(idx) if idx < arr.len() => &mut arr[idx],
+                _ => return,
+            },
+            _ => return,
         };
-        if let Some(parent) = value.pointer_mut(parent_ptr) {
-            if let Some(obj) = parent.as_object_mut() {
-                obj.remove(key);
+    }
+
+    match current {
+        Value::Object(map) => {
+            map.remove(last_key);
+        }
+        Value::Array(arr) => {
+            if let Ok(idx) = last_key.parse::<usize>() {
+                if idx < arr.len() {
+                    arr.remove(idx);
+                }
             }
         }
+        _ => {}
     }
 }
 
@@ -147,5 +237,90 @@ mod tests {
         let responses = vec![json!({"result": "hello"})];
         let errors = validate_determinism("test", &responses, &[]);
         assert!(!errors.is_empty());
+    }
+
+    #[test]
+    fn ignore_paths_strips_timestamp() {
+        let responses = vec![
+            json!({"result": "hello", "timestamp": "2025-01-01T00:00:00Z"}),
+            json!({"result": "hello", "timestamp": "2025-01-01T00:00:01Z"}),
+        ];
+        let errors = validate_determinism(
+            "test",
+            &responses,
+            &["$.timestamp".to_string()],
+        );
+        assert!(errors.is_empty(), "Should pass after ignoring timestamp: {:?}", errors);
+    }
+
+    #[test]
+    fn ignore_paths_strips_nested_field() {
+        let responses = vec![
+            json!({"data": {"value": "same", "id": "abc-123"}}),
+            json!({"data": {"value": "same", "id": "def-456"}}),
+        ];
+        let errors = validate_determinism(
+            "test",
+            &responses,
+            &["$.data.id".to_string()],
+        );
+        assert!(errors.is_empty(), "Should pass after ignoring data.id: {:?}", errors);
+    }
+
+    #[test]
+    fn ignore_paths_multiple_fields() {
+        let responses = vec![
+            json!({"value": "same", "id": "abc", "ts": 1}),
+            json!({"value": "same", "id": "def", "ts": 2}),
+        ];
+        let errors = validate_determinism(
+            "test",
+            &responses,
+            &["$.id".to_string(), "$.ts".to_string()],
+        );
+        assert!(errors.is_empty(), "Should pass after ignoring id and ts: {:?}", errors);
+    }
+
+    #[test]
+    fn ignore_paths_still_fails_on_real_diff() {
+        let responses = vec![
+            json!({"value": "hello", "id": "abc"}),
+            json!({"value": "world", "id": "def"}),
+        ];
+        let errors = validate_determinism(
+            "test",
+            &responses,
+            &["$.id".to_string()],
+        );
+        assert!(!errors.is_empty(), "Should still fail because value differs");
+    }
+
+    #[test]
+    fn simple_jsonpath_to_pointer_basic() {
+        assert_eq!(simple_jsonpath_to_pointer("$.foo"), Some("/foo".to_string()));
+        assert_eq!(simple_jsonpath_to_pointer("$.foo.bar"), Some("/foo/bar".to_string()));
+        assert_eq!(simple_jsonpath_to_pointer("$.foo[0].bar"), Some("/foo/0/bar".to_string()));
+        assert_eq!(simple_jsonpath_to_pointer("$"), Some(String::new()));
+    }
+
+    #[test]
+    fn remove_at_pointer_removes_key() {
+        let mut val = json!({"a": 1, "b": 2});
+        remove_at_pointer(&mut val, "/a");
+        assert_eq!(val, json!({"b": 2}));
+    }
+
+    #[test]
+    fn remove_at_pointer_nested() {
+        let mut val = json!({"data": {"id": "abc", "value": "hello"}});
+        remove_at_pointer(&mut val, "/data/id");
+        assert_eq!(val, json!({"data": {"value": "hello"}}));
+    }
+
+    #[test]
+    fn remove_at_pointer_array_element() {
+        let mut val = json!({"items": [1, 2, 3]});
+        remove_at_pointer(&mut val, "/items/1");
+        assert_eq!(val, json!({"items": [1, 3]}));
     }
 }

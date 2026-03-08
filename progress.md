@@ -1,6 +1,6 @@
 # ZeroMCP TestKit Engine — Progress
 
-## Current Status: Milestones 1–3 Complete
+## Current Status: Milestones 1–4 Complete + M6 Recording/Replay
 
 ### Milestone 1: Foundation (COMPLETE)
 
@@ -50,25 +50,63 @@
 - [x] `mcptest diff`: compare baseline against live server, report added/removed/changed tools
 - [x] `--params` parsing for known-good: `tool_name:{"key":"value"}` format
 - [x] Output to file (`--out`) or stdout
-- [x] 83 unit tests — all passing (up from 61)
 
-### Milestone 4: Advanced Validators (PENDING)
+### Milestone 4: Advanced Validators (COMPLETE)
 
-- [ ] Determinism: implement `value_to_pointer` for JSONPath `ignore_paths` to actually strip fields
-- [ ] Protocol validation: integrate `validate_initialize_response` and `validate_jsonrpc_frame` into executor
-- [ ] Error path: test unknown tool name, malformed params, timeout behaviour against live servers
+- [x] **Determinism ignore_paths**: implemented `jsonpath_to_pointers` using `serde_json_path::query_located()` + `NormalizedPath::to_json_pointer()` — full JSONPath support
+- [x] **Fallback path converter**: `simple_jsonpath_to_pointer` for `$.foo.bar` / `$.foo[0].bar` syntax
+- [x] **Robust `remove_at_pointer`**: walks JSON tree via segments, handles objects and arrays
+- [x] **Protocol validation integration**: `validate_initialize_response` runs as pre-flight check when `validate_protocol: true` in config
+- [x] **JSON-RPC frame validation**: `validate_jsonrpc_frame` runs on error-path responses when protocol validation is enabled
+- [x] **Tool metadata validation**: new `validators::metadata` module checks name, description, inputSchema validity
+- [x] **Auto error-path tests**: `generate_auto_error_tests()` creates test cases for unknown tool + malformed params for each known tool
+- [x] **Config flags**: `validate_protocol`, `validate_metadata`, `auto_error_tests` added to `TestConfig`
+- [x] **CLI flags**: `--validate-protocol`, `--validate-metadata`, `--auto-error-tests` on `mcptest run`
+- [x] **ErrorCategory::Metadata**: new error category for metadata validation failures
+- [x] 8 new metadata validator tests
+- [x] 4 new ignore_paths tests (timestamp, nested, multiple, still-fails)
+- [x] 4 new remove_at_pointer tests
+- [x] 5 new executor integration tests (protocol validation, metadata validation, auto error tests, frame validation)
 
 ### Milestone 5: Test Generation (COMPLETE — merged into M3)
 
 - [x] `mcptest generate --scaffold` connected to live server
 - [x] `mcptest generate --known-good` with param parsing and baseline capture
 
-### Milestone 6: Recording, Replay, Diff (PARTIAL — diff complete, recording pending)
+### Milestone 6: Recording, Replay, Diff (COMPLETE)
 
-- [ ] Recording transport middleware wrapping real transport
-- [ ] `mcptest run --record` and `--replay` flags wired up
+- [x] **`RecordingTransport`**: middleware that wraps any `McpTransport`, records all sent/received messages with timestamps
+- [x] **`ReplayTransport`**: replays a `RecordedSession` without a live server
+- [x] **`--record` flag**: `mcptest run --record session.json` saves the full session recording
+- [x] **`--replay` flag**: `mcptest run --replay session.json` replays a recording for offline testing
 - [x] `mcptest diff` connected to live server comparison
 - [x] Human-readable diff output on stderr
+- [x] 3 new recording transport tests (records messages, doesn't alter, close propagation)
+
+---
+
+## Test Summary
+
+| Module | Tests | What's covered |
+|--------|-------|----------------|
+| `definition/` | 9 | Type round-trips, parser validation, schema |
+| `protocol/jsonrpc.rs` | 7 | Serialization, deserialization, request IDs |
+| `protocol/mcp.rs` | 5 | MCP message types round-trips |
+| `protocol/session.rs` | 6 | State machine transitions, error cases |
+| `protocol/client.rs` | 8 | Handshake, tools_list (+ pagination), tools_call, error propagation, raw_request, close |
+| `transport/mock.rs` | 3 | Send/receive, closed state, empty queue |
+| `transport/mod.rs` + `http.rs` | 9 | URL parsing, SSE parsing |
+| `engine/executor.rs` | 15 | Simple pass, schema, determinism pass/fail, error-path (3), timeout, multi-case, isError, **protocol validation, metadata validation, auto error tests, frame validation, auto test generation** |
+| `engine/result.rs` | 2 | Exit codes, serialization |
+| `validators/determinism.rs` | 11 | Identical, different, too-few, **ignore_paths (timestamp, nested, multiple, still-fails), remove_at_pointer (key, nested, array), simple_jsonpath_to_pointer** |
+| `validators/error_path.rs` | 5 | Error code correct/wrong, success-when-error, is_error |
+| `validators/metadata.rs` | 8 | Valid, empty name, spaces, missing desc, null schema, non-object schema, zero tools, multi-tool |
+| `validators/protocol_val.rs` | 4 | Valid init, empty protocol version, valid frame, missing result+error |
+| `generator/` | 3 | Scaffold, known-good baseline |
+| `recording/recorder.rs` | 1 | Record + serialize |
+| `recording/recording_transport.rs` | 3 | Records messages, message passthrough, close propagation |
+| `diff/baseline.rs` | 4 | Added/removed/changed/no-change |
+| **Total** | **107** | |
 
 ---
 
@@ -80,7 +118,7 @@
   $env:PATH += ";C:\mingw\mingw64"
   ```
 - Edition: Rust 2024 (requires Rust 1.85+)
-- 83 unit tests pass as of Milestone 3 completion (including client + executor tests)
+- 107 unit tests pass as of Milestone 4 + M6 completion
 
 ## File Structure
 
@@ -90,36 +128,39 @@ src/
   lib.rs                      Public API
   cli/
     mod.rs                    CLI definition (clap)
-    run.rs                    mcptest run
+    run.rs                    mcptest run (with --record, --replay, --validate-protocol, --validate-metadata, --auto-error-tests)
     generate.rs               mcptest generate (--scaffold / --known-good)
     diff.rs                   mcptest diff
   definition/
-    types.rs                  TestDefinition, TestCase, Expectation, TestConfig
+    types.rs                  TestDefinition, TestCase, Expectation, TestConfig (with validate_protocol, validate_metadata, auto_error_tests)
     parser.rs                 Load + validate JSON test definitions
     schema.rs                 Embedded JSON Schema v1
   protocol/
     jsonrpc.rs                JSON-RPC 2.0 types
     mcp.rs                    MCP message types (initialize, tools/list, tools/call)
     session.rs                Session state machine
-    client.rs                 McpClient — high-level MCP operations
+    client.rs                 McpClient — high-level MCP operations + transport_as_any
   transport/
     mod.rs                    McpTransport trait + factory
     http.rs                   Streamable HTTP + SSE transport
     stdio.rs                  Stdio subprocess transport
+    mock.rs                   Scriptable mock transport for testing
   engine/
-    executor.rs               Test execution orchestrator
-    result.rs                 TestRunResult, ToolTestResult, ValidationError
+    executor.rs               Test execution orchestrator (protocol validation, metadata validation, auto error tests)
+    result.rs                 TestRunResult, ToolTestResult, ValidationError, ErrorCategory (+Metadata)
   validators/
     schema.rs                 JSON Schema validation
-    determinism.rs            Multi-run comparison
-    protocol_val.rs           Protocol correctness checks
+    determinism.rs            Multi-run comparison with full JSONPath ignore_paths support
+    protocol_val.rs           Protocol correctness checks (handshake + frame)
     error_path.rs             Error response validation
+    metadata.rs               Tool metadata validation (name, description, inputSchema)
   generator/
     scaffold.rs               Generate stub test definitions
     known_good.rs             Capture known-good baselines
   recording/
-    recorder.rs               Session recording
-    replay.rs                 Replay transport
+    recorder.rs               Session recording types
+    recording_transport.rs    Recording middleware transport (wraps any McpTransport)
+    replay.rs                 Replay transport (offline testing)
   diff/
     baseline.rs               Baseline drift detection
 ```

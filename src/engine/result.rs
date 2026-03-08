@@ -65,6 +65,7 @@ pub enum ErrorCategory {
     Determinism,
     Protocol,
     ErrorPath,
+    Metadata,
     Timeout,
     Transport,
     Internal,

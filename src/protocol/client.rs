@@ -197,6 +197,11 @@ impl McpClient {
         &self.session
     }
 
+    /// Access the underlying transport for type-specific operations (e.g. extracting recordings).
+    pub fn transport_as_any(&self) -> &dyn std::any::Any {
+        self.transport.as_any()
+    }
+
     fn extract_result<T: serde::de::DeserializeOwned>(
         &self,
         message: JsonRpcMessage,
