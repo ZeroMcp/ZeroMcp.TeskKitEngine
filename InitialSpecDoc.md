@@ -68,10 +68,10 @@ A language‑neutral executable responsible for executing MCP protocol tests. It
 
 ### 2.2 Language-Specific Fluent DSLs
 
-- Thin wrappers that generate test definitions and invoke the core engine.
+Thin wrappers that generate test definitions and invoke the core engine.
 
 | Initial languages |
-|-------|
+| ------- |
 
 | .NET (ZeroMCP.TestKit) |
 
