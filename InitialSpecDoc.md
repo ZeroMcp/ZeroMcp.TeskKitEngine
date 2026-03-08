@@ -71,7 +71,7 @@ A language‑neutral executable responsible for executing MCP protocol tests. It
 - Thin wrappers that generate test definitions and invoke the core engine.
 
 | Initial languages |
-|---|
+|-------|
 
 | .NET (ZeroMCP.TestKit) |
 
