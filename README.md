@@ -125,6 +125,65 @@ mcptest diff --baseline baseline.json --server http://localhost:8000/mcp
 }
 ```
 
+## CI / CD
+
+The repository includes GitHub Actions workflows in `.github/workflows/`:
+
+| Workflow | Trigger | What it does |
+|----------|---------|-------------|
+| **CI** (`ci.yml`) | Push to `main`, PRs | Tests on Linux/Windows/macOS, clippy, fmt |
+| **Release** (`release.yml`) | GitHub Release published | Builds cross-platform binaries, uploads as release assets and reusable artifacts |
+
+### Release artifacts
+
+When you publish a GitHub Release (e.g. tag `v0.2.0`), the pipeline produces:
+
+| Target | Runner | Archive |
+|--------|--------|---------|
+| `x86_64-pc-windows-msvc` | windows-latest | `.zip` |
+| `aarch64-pc-windows-msvc` | windows-latest | `.zip` |
+| `x86_64-unknown-linux-gnu` | ubuntu-latest | `.tar.gz` |
+| `aarch64-unknown-linux-gnu` | ubuntu-latest | `.tar.gz` |
+| `x86_64-apple-darwin` | macos-latest | `.tar.gz` |
+| `aarch64-apple-darwin` | macos-latest | `.tar.gz` |
+
+### Consuming from other pipelines
+
+**Option 1 — GitHub Release assets** (recommended for versioned releases):
+
+```yaml
+- name: Download mcptest
+  run: |
+    gh release download v0.2.0 \
+      --repo ZeroMcp/ZeroMcp.TeskKitEngine \
+      --pattern "mcptest-*-x86_64-unknown-linux-gnu.tar.gz"
+    tar xzf mcptest-*.tar.gz
+```
+
+**Option 2 — Workflow artifacts** (for consuming the latest build by run ID):
+
+```yaml
+- uses: actions/download-artifact@v4
+  with:
+    name: mcptest-x86_64-unknown-linux-gnu
+    repository: ZeroMcp/ZeroMcp.TeskKitEngine
+    run-id: ${{ needs.detect.outputs.engine_run_id }}
+    github-token: ${{ secrets.ORG_GITHUB_TOKEN }}
+```
+
+**Option 3 — Combined bundle** (all platforms in one artifact):
+
+```yaml
+- uses: actions/download-artifact@v4
+  with:
+    name: mcptest-all
+    repository: ZeroMcp/ZeroMcp.TeskKitEngine
+    run-id: ${{ needs.detect.outputs.engine_run_id }}
+    github-token: ${{ secrets.ORG_GITHUB_TOKEN }}
+```
+
+> Cross-repo artifact downloads require a GitHub token with `actions:read` scope on the engine repository.
+
 ## CI Exit Codes
 
 | Code | Meaning |

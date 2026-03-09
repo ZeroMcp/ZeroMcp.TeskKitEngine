@@ -123,6 +123,10 @@
 ## File Structure
 
 ```
+.github/
+  workflows/
+    ci.yml                    CI: test, clippy, fmt on push/PR
+    release.yml               Release: cross-platform build + artifact publish
 src/
   main.rs                     CLI entry point
   lib.rs                      Public API
@@ -164,6 +168,20 @@ src/
   diff/
     baseline.rs               Baseline drift detection
 ```
+
+---
+
+## CI / CD Pipelines (COMPLETE)
+
+- [x] `.github/workflows/ci.yml` — runs on push to `main` and PRs: tests on Linux/Windows/macOS, clippy, rustfmt
+- [x] `.github/workflows/release.yml` — runs on GitHub Release published:
+  - Builds for 6 targets: x86_64 + aarch64 for Windows, Linux, macOS
+  - Runs tests on native targets (skips cross-compiled aarch64)
+  - Packages as `.zip` (Windows) / `.tar.gz` (Unix)
+  - Uploads per-target artifacts (90-day retention) for cross-repo `actions/download-artifact`
+  - Attaches archives to the GitHub Release as assets (for `gh release download`)
+  - Bundles all targets into a single `mcptest-all` combined artifact
+- [x] README updated with consumption examples (release assets, workflow artifacts, combined bundle)
 
 ---
 
