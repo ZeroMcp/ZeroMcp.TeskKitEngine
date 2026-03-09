@@ -262,13 +262,13 @@ impl TestExecutor {
 
         let response_value = serde_json::to_value(&call_result)?;
 
-        // --- Schema validation ---
+        // --- Schema validation (validates input params against inputSchema) ---
         if expect.schema_valid {
             if let Some(tool) = tool_descriptor {
                 let schema_errors = validators::schema::validate_tool_output(
                     tool_name,
                     &tool.input_schema,
-                    &response_value,
+                    params,
                 );
                 schema_valid_result = Some(schema_errors.is_empty());
                 errors.extend(schema_errors);

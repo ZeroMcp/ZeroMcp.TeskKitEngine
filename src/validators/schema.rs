@@ -3,8 +3,9 @@ use serde_json::Value;
 
 use crate::engine::result::{ErrorCategory, ValidationError};
 
-/// Validate that a tool call response conforms to the tool's declared JSON Schema.
-pub fn validate_tool_output(tool_name: &str, schema: &Value, response: &Value) -> Vec<ValidationError> {
+/// Validate that the provided value conforms to the tool's declared JSON Schema.
+/// Typically used to validate input params against `inputSchema`.
+pub fn validate_tool_output(tool_name: &str, schema: &Value, value: &Value) -> Vec<ValidationError> {
     let validator = match Validator::new(schema) {
         Ok(v) => v,
         Err(e) => {
@@ -20,7 +21,7 @@ pub fn validate_tool_output(tool_name: &str, schema: &Value, response: &Value) -
     };
 
     validator
-        .iter_errors(response)
+        .iter_errors(value)
         .map(|e| {
             let ctx = e.instance_path().to_string();
             ValidationError {

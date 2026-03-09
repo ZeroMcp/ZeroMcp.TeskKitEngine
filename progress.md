@@ -96,7 +96,7 @@
 | `protocol/client.rs` | 8 | Handshake, tools_list (+ pagination), tools_call, error propagation, raw_request, close |
 | `transport/mock.rs` | 3 | Send/receive, closed state, empty queue |
 | `transport/mod.rs` + `http.rs` | 9 | URL parsing, SSE parsing |
-| `engine/executor.rs` | 18 | Simple pass, schema, determinism pass/fail, error-path (3), timeout, multi-case, isError, protocol validation, metadata validation, auto error tests, frame validation, auto test generation, **response field populated (success, error path, preflight none)** |
+| `engine/executor.rs` | 18 | Simple pass, schema (validates params vs inputSchema), determinism pass/fail, error-path (3), timeout, multi-case, isError, protocol validation, metadata validation, auto error tests, frame validation, auto test generation, **response field populated (success, error path, preflight none)** |
 | `engine/result.rs` | 3 | Exit codes, serialization, **response field omitted when None** |
 | `validators/determinism.rs` | 11 | Identical, different, too-few, **ignore_paths (timestamp, nested, multiple, still-fails), remove_at_pointer (key, nested, array), simple_jsonpath_to_pointer** |
 | `validators/error_path.rs` | 5 | Error code correct/wrong, success-when-error, is_error |
