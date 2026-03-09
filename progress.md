@@ -99,14 +99,14 @@
 | `engine/executor.rs` | 18 | Simple pass, schema (validates params vs inputSchema), determinism pass/fail, error-path (3), timeout, multi-case, isError, protocol validation, metadata validation, auto error tests, frame validation, auto test generation, **response field populated (success, error path, preflight none)** |
 | `engine/result.rs` | 3 | Exit codes, serialization, **response field omitted when None** |
 | `validators/determinism.rs` | 11 | Identical, different, too-few, **ignore_paths (timestamp, nested, multiple, still-fails), remove_at_pointer (key, nested, array), simple_jsonpath_to_pointer** |
-| `validators/error_path.rs` | 5 | Error code correct/wrong, success-when-error, is_error |
+| `validators/error_path.rs` | 8 | Error code correct/wrong, success-when-error, is_error, **MCP isError:true recognition (is_error, error_code, isError:false)** |
 | `validators/metadata.rs` | 8 | Valid, empty name, spaces, missing desc, null schema, non-object schema, zero tools, multi-tool |
 | `validators/protocol_val.rs` | 4 | Valid init, empty protocol version, valid frame, missing result+error |
 | `generator/` | 3 | Scaffold, known-good baseline |
 | `recording/recorder.rs` | 1 | Record + serialize |
 | `recording/recording_transport.rs` | 3 | Records messages, message passthrough, close propagation |
 | `diff/baseline.rs` | 4 | Added/removed/changed/no-change |
-| **Total** | **111** | |
+| **Total** | **114** | |
 
 ---
 
@@ -118,7 +118,7 @@
   $env:PATH += ";C:\mingw\mingw64"
   ```
 - Edition: Rust 2024 (requires Rust 1.85+)
-- 111 unit tests pass (including response field tests)
+- 114 unit tests pass (including response field tests and MCP isError recognition)
 
 ## File Structure
 
