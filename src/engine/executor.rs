@@ -86,9 +86,7 @@ impl TestExecutor {
             let auto_cases = generate_auto_error_tests(&tools);
             for auto_case in &auto_cases {
                 let case_start = Instant::now();
-                let result = self
-                    .run_error_path_case(client, auto_case)
-                    .await;
+                let result = self.run_error_path_case(client, auto_case).await;
                 let elapsed = case_start.elapsed().as_millis() as u64;
 
                 let tool_test_result = match result {
@@ -169,10 +167,7 @@ impl TestExecutor {
                     stream_chunks: None,
                     errors: vec![ValidationError {
                         category: ErrorCategory::Timeout,
-                        message: format!(
-                            "Tool '{}' timed out after {}ms",
-                            test_case.tool, timeout
-                        ),
+                        message: format!("Tool '{}' timed out after {}ms", test_case.tool, timeout),
                         context: None,
                     }],
                     response: None,
@@ -226,8 +221,7 @@ impl TestExecutor {
             }
 
             if let Some(code) = expect.expect_error_code {
-                let mut e =
-                    validators::error_path::validate_error_code(tool_name, &response, code);
+                let mut e = validators::error_path::validate_error_code(tool_name, &response, code);
                 errors.append(&mut e);
             } else {
                 let mut e = validators::error_path::validate_is_error(tool_name, &response);
@@ -265,11 +259,8 @@ impl TestExecutor {
         // --- Schema validation (validates input params against inputSchema) ---
         if expect.schema_valid {
             if let Some(tool) = tool_descriptor {
-                let schema_errors = validators::schema::validate_tool_output(
-                    tool_name,
-                    &tool.input_schema,
-                    params,
-                );
+                let schema_errors =
+                    validators::schema::validate_tool_output(tool_name, &tool.input_schema, params);
                 schema_valid_result = Some(schema_errors.is_empty());
                 errors.extend(schema_errors);
             } else {
@@ -292,14 +283,15 @@ impl TestExecutor {
 
             for i in 1..runs {
                 tracing::debug!(tool = %tool_name, run = i + 1, total = runs, "Determinism re-run");
-                let re_result = client
-                    .tools_call(tool_name, params.clone())
-                    .await
-                    .context(format!(
-                        "Determinism re-run {} failed for '{}'",
-                        i + 1,
-                        tool_name
-                    ))?;
+                let re_result =
+                    client
+                        .tools_call(tool_name, params.clone())
+                        .await
+                        .context(format!(
+                            "Determinism re-run {} failed for '{}'",
+                            i + 1,
+                            tool_name
+                        ))?;
                 responses.push(serde_json::to_value(&re_result)?);
             }
 
@@ -649,7 +641,10 @@ mod tests {
         let result = executor.run(&mut client, None).await.unwrap();
 
         assert!(!result.results[0].passed);
-        assert_eq!(result.results[0].errors[0].category, ErrorCategory::ErrorPath);
+        assert_eq!(
+            result.results[0].errors[0].category,
+            ErrorCategory::ErrorPath
+        );
     }
 
     #[tokio::test]
@@ -740,10 +735,12 @@ mod tests {
         let result = executor.run(&mut client, None).await.unwrap();
 
         assert!(!result.results[0].passed);
-        assert!(result.results[0]
-            .errors
-            .iter()
-            .any(|e| e.category == ErrorCategory::Protocol));
+        assert!(
+            result.results[0]
+                .errors
+                .iter()
+                .any(|e| e.category == ErrorCategory::Protocol)
+        );
     }
 
     // --- Milestone 4: New tests ---
@@ -790,7 +787,13 @@ mod tests {
             .find(|r| r.tool == "__protocol_handshake__");
         assert!(protocol_result.is_some(), "Should have a protocol result");
         assert!(!protocol_result.unwrap().passed);
-        assert!(protocol_result.unwrap().errors.iter().any(|e| e.category == ErrorCategory::Protocol));
+        assert!(
+            protocol_result
+                .unwrap()
+                .errors
+                .iter()
+                .any(|e| e.category == ErrorCategory::Protocol)
+        );
     }
 
     #[tokio::test]
@@ -825,11 +828,13 @@ mod tests {
             .iter()
             .find(|r| r.tool == "__tool_metadata__");
         assert!(meta_result.is_some(), "Should have a metadata result");
-        assert!(meta_result
-            .unwrap()
-            .errors
-            .iter()
-            .any(|e| e.category == ErrorCategory::Metadata));
+        assert!(
+            meta_result
+                .unwrap()
+                .errors
+                .iter()
+                .any(|e| e.category == ErrorCategory::Metadata)
+        );
     }
 
     #[tokio::test]
@@ -905,7 +910,12 @@ mod tests {
         let result = executor.run(&mut client, None).await.unwrap();
 
         // Should pass — valid frame and expected error
-        assert!(result.results.iter().any(|r| r.tool == "nonexistent" && r.passed));
+        assert!(
+            result
+                .results
+                .iter()
+                .any(|r| r.tool == "nonexistent" && r.passed)
+        );
     }
 
     #[tokio::test]
@@ -927,9 +937,21 @@ mod tests {
 
         let cases = generate_auto_error_tests(&tools);
 
-        assert!(cases.iter().any(|c| c.tool == "__mcptest_nonexistent_tool__"));
-        assert!(cases.iter().any(|c| c.tool == "alpha" && c.expect.expect_error));
-        assert!(cases.iter().any(|c| c.tool == "beta" && c.expect.expect_error));
+        assert!(
+            cases
+                .iter()
+                .any(|c| c.tool == "__mcptest_nonexistent_tool__")
+        );
+        assert!(
+            cases
+                .iter()
+                .any(|c| c.tool == "alpha" && c.expect.expect_error)
+        );
+        assert!(
+            cases
+                .iter()
+                .any(|c| c.tool == "beta" && c.expect.expect_error)
+        );
         assert_eq!(cases.len(), 3); // 1 unknown + 2 malformed
     }
 
@@ -954,7 +976,10 @@ mod tests {
         let result = executor.run(&mut client, None).await.unwrap();
 
         assert!(result.results[0].passed);
-        let response = result.results[0].response.as_ref().expect("response should be populated");
+        let response = result.results[0]
+            .response
+            .as_ref()
+            .expect("response should be populated");
         let content = response.get("content").expect("should have content");
         assert!(content.is_array());
         let text = content[0].get("text").and_then(|t| t.as_str());
@@ -982,9 +1007,14 @@ mod tests {
         let result = executor.run(&mut client, None).await.unwrap();
 
         assert!(result.results[0].passed);
-        let response = result.results[0].response.as_ref().expect("response should be populated on error path");
-        assert!(response.get("error").is_some() || response.get("result").is_some(),
-            "response should contain error or result field");
+        let response = result.results[0]
+            .response
+            .as_ref()
+            .expect("response should be populated on error path");
+        assert!(
+            response.get("error").is_some() || response.get("result").is_some(),
+            "response should contain error or result field"
+        );
     }
 
     #[tokio::test]
@@ -1028,9 +1058,19 @@ mod tests {
             .iter()
             .find(|r| r.tool == "__protocol_handshake__")
             .expect("Should have a protocol result");
-        assert!(protocol_result.response.is_none(), "Pre-flight results should not have a response");
+        assert!(
+            protocol_result.response.is_none(),
+            "Pre-flight results should not have a response"
+        );
 
-        let echo_result = result.results.iter().find(|r| r.tool == "echo").expect("Should have echo result");
-        assert!(echo_result.response.is_some(), "Tool call results should have a response");
+        let echo_result = result
+            .results
+            .iter()
+            .find(|r| r.tool == "echo")
+            .expect("Should have echo result");
+        assert!(
+            echo_result.response.is_some(),
+            "Tool call results should have a response"
+        );
     }
 }

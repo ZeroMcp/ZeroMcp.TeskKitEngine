@@ -26,10 +26,12 @@ pub struct DiffArgs {
 pub async fn execute(args: DiffArgs) -> Result<()> {
     tracing::info!(baseline = %args.baseline.display(), server = %args.server, "Running baseline diff");
 
-    let baseline_json = std::fs::read_to_string(&args.baseline)
-        .context(format!("Failed to read baseline: {}", args.baseline.display()))?;
-    let baseline: Baseline = serde_json::from_str(&baseline_json)
-        .context("Failed to parse baseline file")?;
+    let baseline_json = std::fs::read_to_string(&args.baseline).context(format!(
+        "Failed to read baseline: {}",
+        args.baseline.display()
+    ))?;
+    let baseline: Baseline =
+        serde_json::from_str(&baseline_json).context("Failed to parse baseline file")?;
 
     let baseline_tools: Vec<crate::protocol::mcp::Tool> = baseline
         .entries
@@ -51,9 +53,7 @@ pub async fn execute(args: DiffArgs) -> Result<()> {
     let init_result = client.initialize().await.context("MCP handshake failed")?;
     eprintln!(
         "Connected to {} v{} (protocol {})",
-        init_result.server_info.name,
-        init_result.server_info.version,
-        init_result.protocol_version
+        init_result.server_info.name, init_result.server_info.version, init_result.protocol_version
     );
 
     let current_tools = client.tools_list().await.context("Failed to list tools")?;

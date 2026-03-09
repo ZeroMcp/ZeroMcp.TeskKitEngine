@@ -60,7 +60,7 @@ impl McpTransport for RecordingTransport {
 mod tests {
     use super::*;
     use crate::protocol::jsonrpc::JsonRpcRequest;
-    use crate::transport::mock::{init_response, MockTransport};
+    use crate::transport::mock::{MockTransport, init_response};
 
     #[tokio::test]
     async fn records_sent_and_received_messages() {

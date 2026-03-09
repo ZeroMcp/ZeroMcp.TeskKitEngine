@@ -44,22 +44,14 @@ pub async fn execute(args: GenerateArgs) -> Result<()> {
 
     let mut client = McpClient::new(transport);
 
-    let init_result = client
-        .initialize()
-        .await
-        .context("MCP handshake failed")?;
+    let init_result = client.initialize().await.context("MCP handshake failed")?;
 
     eprintln!(
         "Connected to {} v{} (protocol {})",
-        init_result.server_info.name,
-        init_result.server_info.version,
-        init_result.protocol_version
+        init_result.server_info.name, init_result.server_info.version, init_result.protocol_version
     );
 
-    let tools = client
-        .tools_list()
-        .await
-        .context("Failed to list tools")?;
+    let tools = client.tools_list().await.context("Failed to list tools")?;
 
     eprintln!("Discovered {} tool(s)", tools.len());
     for tool in &tools {
@@ -127,12 +119,12 @@ fn parse_params(raw: &[String]) -> Result<std::collections::HashMap<&str, Value>
     let mut map = std::collections::HashMap::new();
 
     for entry in raw {
-        let (name, json_str) = entry
-            .split_once(':')
-            .ok_or_else(|| anyhow::anyhow!(
+        let (name, json_str) = entry.split_once(':').ok_or_else(|| {
+            anyhow::anyhow!(
                 "Invalid --params format '{}'. Expected tool_name:{{\"key\":\"value\"}}",
                 entry
-            ))?;
+            )
+        })?;
 
         let value: Value = serde_json::from_str(json_str).context(format!(
             "Invalid JSON in --params for tool '{}': {}",

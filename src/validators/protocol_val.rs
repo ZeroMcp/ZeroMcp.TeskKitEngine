@@ -1,5 +1,5 @@
 use crate::engine::result::{ErrorCategory, ValidationError};
-use crate::protocol::jsonrpc::{JsonRpcResponse, JSONRPC_VERSION};
+use crate::protocol::jsonrpc::{JSONRPC_VERSION, JsonRpcResponse};
 use crate::protocol::mcp::InitializeResult;
 
 /// Validate that the server's initialize response is protocol-correct.

@@ -5,16 +5,17 @@ use crate::engine::result::{ErrorCategory, ValidationError};
 
 /// Validate that the provided value conforms to the tool's declared JSON Schema.
 /// Typically used to validate input params against `inputSchema`.
-pub fn validate_tool_output(tool_name: &str, schema: &Value, value: &Value) -> Vec<ValidationError> {
+pub fn validate_tool_output(
+    tool_name: &str,
+    schema: &Value,
+    value: &Value,
+) -> Vec<ValidationError> {
     let validator = match Validator::new(schema) {
         Ok(v) => v,
         Err(e) => {
             return vec![ValidationError {
                 category: ErrorCategory::Schema,
-                message: format!(
-                    "Tool '{}' has an invalid inputSchema: {}",
-                    tool_name, e
-                ),
+                message: format!("Tool '{}' has an invalid inputSchema: {}", tool_name, e),
                 context: None,
             }];
         }

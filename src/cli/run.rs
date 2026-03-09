@@ -78,8 +78,10 @@ pub async fn execute(args: RunArgs) -> Result<()> {
     // --- Replay mode ---
     if let Some(ref replay_path) = args.replay {
         tracing::info!(path = %replay_path.display(), "Replaying recorded session");
-        let session = RecordedSession::load_from_file(replay_path)
-            .context(format!("Failed to load recording from {}", replay_path.display()))?;
+        let session = RecordedSession::load_from_file(replay_path).context(format!(
+            "Failed to load recording from {}",
+            replay_path.display()
+        ))?;
         eprintln!("Replaying session recorded from {}", session.server);
 
         let replay = ReplayTransport::from_session(session);
@@ -125,16 +127,11 @@ pub async fn execute(args: RunArgs) -> Result<()> {
 
     let mut client = McpClient::new(transport);
 
-    let init_result = client
-        .initialize()
-        .await
-        .context("MCP handshake failed")?;
+    let init_result = client.initialize().await.context("MCP handshake failed")?;
 
     eprintln!(
         "Connected to {} v{} (protocol {})",
-        init_result.server_info.name,
-        init_result.server_info.version,
-        init_result.protocol_version
+        init_result.server_info.name, init_result.server_info.version, init_result.protocol_version
     );
 
     let executor = TestExecutor::new(definition);
@@ -185,16 +182,14 @@ fn output_results(
     Ok(())
 }
 
-fn save_recording(
-    client: &mut McpClient,
-    record_path: &std::path::Path,
-) -> Result<()> {
+fn save_recording(client: &mut McpClient, record_path: &std::path::Path) -> Result<()> {
     let transport_any = client.transport_as_any();
     if let Some(recording) = transport_any.downcast_ref::<RecordingTransport>() {
         let session = recording.to_session();
-        session
-            .save_to_file(record_path)
-            .context(format!("Failed to save recording to {}", record_path.display()))?;
+        session.save_to_file(record_path).context(format!(
+            "Failed to save recording to {}",
+            record_path.display()
+        ))?;
         eprintln!("Session recorded to {}", record_path.display());
     }
     Ok(())

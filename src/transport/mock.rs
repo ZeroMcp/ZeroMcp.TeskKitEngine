@@ -159,9 +159,7 @@ mod tests {
         mock.close().await.unwrap();
 
         let msg = JsonRpcMessage::Request(crate::protocol::jsonrpc::JsonRpcRequest::new(
-            1i64,
-            "test",
-            None,
+            1i64, "test", None,
         ));
         let err = mock.send(&msg).await.unwrap_err();
         assert!(matches!(err, TransportError::Closed));

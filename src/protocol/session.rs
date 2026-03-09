@@ -160,9 +160,7 @@ mod tests {
     #[test]
     fn reject_invalid_transition() {
         let mut session = Session::new();
-        let err = session
-            .transition_to_ready(mock_init_result())
-            .unwrap_err();
+        let err = session.transition_to_ready(mock_init_result()).unwrap_err();
         assert!(matches!(err, SessionError::InvalidTransition { .. }));
     }
 

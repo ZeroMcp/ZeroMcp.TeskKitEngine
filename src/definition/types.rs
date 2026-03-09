@@ -37,7 +37,11 @@ pub struct TestCase {
     pub expect: Expectation,
 
     /// Marker indicating this was auto-generated and needs review.
-    #[serde(rename = "_generated", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "_generated",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub generated: Option<bool>,
 }
 

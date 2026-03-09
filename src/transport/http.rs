@@ -132,10 +132,7 @@ impl McpTransport for HttpTransport {
     }
 
     async fn receive(&mut self) -> Result<JsonRpcMessage, TransportError> {
-        self.response_rx
-            .recv()
-            .await
-            .ok_or(TransportError::Closed)
+        self.response_rx.recv().await.ok_or(TransportError::Closed)
     }
 
     async fn close(&mut self) -> Result<(), TransportError> {
@@ -163,7 +160,10 @@ fn parse_sse_events(body: &str) -> Vec<JsonRpcMessage> {
     let mut data_buf = String::new();
 
     for line in body.lines() {
-        if let Some(data) = line.strip_prefix("data: ").or_else(|| line.strip_prefix("data:")) {
+        if let Some(data) = line
+            .strip_prefix("data: ")
+            .or_else(|| line.strip_prefix("data:"))
+        {
             let data = data.trim();
             if !data.is_empty() {
                 data_buf.push_str(data);
@@ -181,7 +181,9 @@ fn parse_sse_events(body: &str) -> Vec<JsonRpcMessage> {
     if !data_buf.is_empty() {
         match serde_json::from_str::<JsonRpcMessage>(&data_buf) {
             Ok(msg) => messages.push(msg),
-            Err(e) => tracing::warn!(data = %data_buf, error = %e, "Failed to parse trailing SSE event"),
+            Err(e) => {
+                tracing::warn!(data = %data_buf, error = %e, "Failed to parse trailing SSE event")
+            }
         }
     }
 

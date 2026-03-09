@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt};
 
 mod cli;
 mod definition;

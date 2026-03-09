@@ -152,16 +152,20 @@ mod tests {
     #[test]
     fn is_error_on_mcp_is_error_true() {
         let resp = mcp_is_error_response();
-        assert!(validate_is_error("test", &resp).is_empty(),
-            "isError: true should be treated as an error response");
+        assert!(
+            validate_is_error("test", &resp).is_empty(),
+            "isError: true should be treated as an error response"
+        );
     }
 
     #[test]
     fn expect_error_code_passes_on_mcp_is_error() {
         let resp = mcp_is_error_response();
         let errors = validate_error_code("test", &resp, -32601);
-        assert!(errors.is_empty(),
-            "MCP isError: true should satisfy expect_error_code since the tool did error");
+        assert!(
+            errors.is_empty(),
+            "MCP isError: true should satisfy expect_error_code since the tool did error"
+        );
     }
 
     #[test]

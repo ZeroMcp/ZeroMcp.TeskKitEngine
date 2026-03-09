@@ -5,8 +5,8 @@ use crate::protocol::jsonrpc::{
     JsonRpcMessage, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse,
 };
 use crate::protocol::mcp::{
-    InitializeParams, InitializeResult, ToolCallParams, ToolCallResult, Tool, ToolsListResult,
-    METHOD_INITIALIZE, METHOD_INITIALIZED, METHOD_TOOLS_CALL, METHOD_TOOLS_LIST,
+    InitializeParams, InitializeResult, METHOD_INITIALIZE, METHOD_INITIALIZED, METHOD_TOOLS_CALL,
+    METHOD_TOOLS_LIST, Tool, ToolCallParams, ToolCallResult, ToolsListResult,
 };
 use crate::protocol::session::Session;
 use crate::transport::McpTransport;
@@ -36,7 +36,8 @@ impl McpClient {
 
         let params = InitializeParams::for_mcptest();
         let id = self.session.next_request_id();
-        let request = JsonRpcRequest::new(id, METHOD_INITIALIZE, Some(serde_json::to_value(&params)?));
+        let request =
+            JsonRpcRequest::new(id, METHOD_INITIALIZE, Some(serde_json::to_value(&params)?));
 
         tracing::info!("Sending initialize request");
         self.transport
@@ -89,11 +90,7 @@ impl McpClient {
             }
 
             let id = self.session.next_request_id();
-            let request = JsonRpcRequest::new(
-                id,
-                METHOD_TOOLS_LIST,
-                Some(Value::Object(params)),
-            );
+            let request = JsonRpcRequest::new(id, METHOD_TOOLS_LIST, Some(Value::Object(params)));
 
             tracing::debug!(cursor = ?cursor, "Requesting tools/list");
             self.transport
@@ -111,7 +108,11 @@ impl McpClient {
             let page_count = result.tools.len();
             all_tools.extend(result.tools);
 
-            tracing::debug!(tools_in_page = page_count, total = all_tools.len(), "Received tools page");
+            tracing::debug!(
+                tools_in_page = page_count,
+                total = all_tools.len(),
+                "Received tools page"
+            );
 
             match result.next_cursor {
                 Some(next) if !next.is_empty() => cursor = Some(next),
@@ -135,11 +136,8 @@ impl McpClient {
         };
 
         let id = self.session.next_request_id();
-        let request = JsonRpcRequest::new(
-            id,
-            METHOD_TOOLS_CALL,
-            Some(serde_json::to_value(&params)?),
-        );
+        let request =
+            JsonRpcRequest::new(id, METHOD_TOOLS_CALL, Some(serde_json::to_value(&params)?));
 
         tracing::debug!(tool = %name, "Calling tool");
         self.transport
@@ -147,13 +145,13 @@ impl McpClient {
             .await
             .context(format!("Failed to send tools/call for '{}'", name))?;
 
-        let response = self
-            .transport
-            .receive()
-            .await
-            .context(format!("Failed to receive tools/call response for '{}'", name))?;
+        let response = self.transport.receive().await.context(format!(
+            "Failed to receive tools/call response for '{}'",
+            name
+        ))?;
 
-        let result = self.extract_result::<ToolCallResult>(response, &format!("tools/call({})", name))?;
+        let result =
+            self.extract_result::<ToolCallResult>(response, &format!("tools/call({})", name))?;
         tracing::debug!(
             tool = %name,
             is_error = result.is_error,
@@ -166,7 +164,11 @@ impl McpClient {
 
     /// Send a raw JSON-RPC request and return the raw response.
     /// Used for error-path testing where we intentionally send malformed requests.
-    pub async fn raw_request(&mut self, method: &str, params: Option<Value>) -> Result<JsonRpcResponse> {
+    pub async fn raw_request(
+        &mut self,
+        method: &str,
+        params: Option<Value>,
+    ) -> Result<JsonRpcResponse> {
         let id = self.session.next_request_id();
         let request = JsonRpcRequest::new(id, method, params);
 
@@ -189,7 +191,10 @@ impl McpClient {
 
     pub async fn close(&mut self) -> Result<()> {
         let _ = self.session.transition_to_closed();
-        self.transport.close().await.context("Failed to close transport")?;
+        self.transport
+            .close()
+            .await
+            .context("Failed to close transport")?;
         Ok(())
     }
 
@@ -215,10 +220,7 @@ impl McpClient {
                         method,
                         error.code,
                         error.message,
-                        error
-                            .data
-                            .map(|d| format!(" — {}", d))
-                            .unwrap_or_default()
+                        error.data.map(|d| format!(" — {}", d)).unwrap_or_default()
                     );
                 }
                 let result_value = resp

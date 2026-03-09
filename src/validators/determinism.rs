@@ -223,10 +223,7 @@ mod tests {
 
     #[test]
     fn different_responses_fail() {
-        let responses = vec![
-            json!({"result": "hello"}),
-            json!({"result": "world"}),
-        ];
+        let responses = vec![json!({"result": "hello"}), json!({"result": "world"})];
         let errors = validate_determinism("test", &responses, &[]);
         assert!(!errors.is_empty());
         assert_eq!(errors[0].category, ErrorCategory::Determinism);
@@ -245,12 +242,12 @@ mod tests {
             json!({"result": "hello", "timestamp": "2025-01-01T00:00:00Z"}),
             json!({"result": "hello", "timestamp": "2025-01-01T00:00:01Z"}),
         ];
-        let errors = validate_determinism(
-            "test",
-            &responses,
-            &["$.timestamp".to_string()],
+        let errors = validate_determinism("test", &responses, &["$.timestamp".to_string()]);
+        assert!(
+            errors.is_empty(),
+            "Should pass after ignoring timestamp: {:?}",
+            errors
         );
-        assert!(errors.is_empty(), "Should pass after ignoring timestamp: {:?}", errors);
     }
 
     #[test]
@@ -259,12 +256,12 @@ mod tests {
             json!({"data": {"value": "same", "id": "abc-123"}}),
             json!({"data": {"value": "same", "id": "def-456"}}),
         ];
-        let errors = validate_determinism(
-            "test",
-            &responses,
-            &["$.data.id".to_string()],
+        let errors = validate_determinism("test", &responses, &["$.data.id".to_string()]);
+        assert!(
+            errors.is_empty(),
+            "Should pass after ignoring data.id: {:?}",
+            errors
         );
-        assert!(errors.is_empty(), "Should pass after ignoring data.id: {:?}", errors);
     }
 
     #[test]
@@ -278,7 +275,11 @@ mod tests {
             &responses,
             &["$.id".to_string(), "$.ts".to_string()],
         );
-        assert!(errors.is_empty(), "Should pass after ignoring id and ts: {:?}", errors);
+        assert!(
+            errors.is_empty(),
+            "Should pass after ignoring id and ts: {:?}",
+            errors
+        );
     }
 
     #[test]
@@ -287,19 +288,27 @@ mod tests {
             json!({"value": "hello", "id": "abc"}),
             json!({"value": "world", "id": "def"}),
         ];
-        let errors = validate_determinism(
-            "test",
-            &responses,
-            &["$.id".to_string()],
+        let errors = validate_determinism("test", &responses, &["$.id".to_string()]);
+        assert!(
+            !errors.is_empty(),
+            "Should still fail because value differs"
         );
-        assert!(!errors.is_empty(), "Should still fail because value differs");
     }
 
     #[test]
     fn simple_jsonpath_to_pointer_basic() {
-        assert_eq!(simple_jsonpath_to_pointer("$.foo"), Some("/foo".to_string()));
-        assert_eq!(simple_jsonpath_to_pointer("$.foo.bar"), Some("/foo/bar".to_string()));
-        assert_eq!(simple_jsonpath_to_pointer("$.foo[0].bar"), Some("/foo/0/bar".to_string()));
+        assert_eq!(
+            simple_jsonpath_to_pointer("$.foo"),
+            Some("/foo".to_string())
+        );
+        assert_eq!(
+            simple_jsonpath_to_pointer("$.foo.bar"),
+            Some("/foo/bar".to_string())
+        );
+        assert_eq!(
+            simple_jsonpath_to_pointer("$.foo[0].bar"),
+            Some("/foo/0/bar".to_string())
+        );
         assert_eq!(simple_jsonpath_to_pointer("$"), Some(String::new()));
     }
 

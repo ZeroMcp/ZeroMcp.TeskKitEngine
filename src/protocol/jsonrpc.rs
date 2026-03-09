@@ -122,11 +122,7 @@ mod tests {
 
     #[test]
     fn serialize_request() {
-        let req = JsonRpcRequest::new(
-            1i64,
-            "tools/list",
-            Some(serde_json::json!({})),
-        );
+        let req = JsonRpcRequest::new(1i64, "tools/list", Some(serde_json::json!({})));
         let json = serde_json::to_string(&req).unwrap();
         assert!(json.contains("\"jsonrpc\":\"2.0\""));
         assert!(json.contains("\"method\":\"tools/list\""));

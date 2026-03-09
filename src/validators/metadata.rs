@@ -34,10 +34,7 @@ pub fn validate_tool_metadata(tools: &[Tool]) -> Vec<ValidationError> {
         if tool.description.as_ref().is_none_or(|d| d.is_empty()) {
             errors.push(ValidationError {
                 category: ErrorCategory::Metadata,
-                message: format!(
-                    "Tool '{}': missing or empty description",
-                    tool.name
-                ),
+                message: format!("Tool '{}': missing or empty description", tool.name),
                 context: None,
             });
         }
@@ -129,11 +126,7 @@ mod tests {
 
     #[test]
     fn empty_name_fails() {
-        let tools = vec![make_tool(
-            "",
-            Some("desc"),
-            json!({"type": "object"}),
-        )];
+        let tools = vec![make_tool("", Some("desc"), json!({"type": "object"}))];
         let errors = validate_tool_metadata(&tools);
         assert!(errors.iter().any(|e| e.message.contains("empty name")));
     }
@@ -151,11 +144,7 @@ mod tests {
 
     #[test]
     fn missing_description_warns() {
-        let tools = vec![make_tool(
-            "search",
-            None,
-            json!({"type": "object"}),
-        )];
+        let tools = vec![make_tool("search", None, json!({"type": "object"}))];
         let errors = validate_tool_metadata(&tools);
         assert!(errors.iter().any(|e| e.message.contains("description")));
     }
@@ -187,6 +176,10 @@ mod tests {
             make_tool("", None, Value::Null),
         ];
         let errors = validate_tool_metadata(&tools);
-        assert!(errors.len() >= 3, "Expected at least 3 errors for bad tool: {:?}", errors);
+        assert!(
+            errors.len() >= 3,
+            "Expected at least 3 errors for bad tool: {:?}",
+            errors
+        );
     }
 }
