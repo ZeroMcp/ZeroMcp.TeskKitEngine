@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// Overall test run result — the canonical engine output.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,6 +45,10 @@ pub struct ToolTestResult {
 
     /// Errors encountered during this test case.
     pub errors: Vec<ValidationError>,
+
+    /// Raw JSON response from the MCP server (if available).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response: Option<Value>,
 
     /// Execution time in milliseconds.
     pub elapsed_ms: u64,
@@ -121,14 +126,38 @@ mod tests {
                 deterministic: Some(true),
                 stream_chunks: Some(1),
                 errors: vec![],
+                response: Some(serde_json::json!({"content": [{"type": "text", "text": "hello"}]})),
                 elapsed_ms: 42,
             }],
             elapsed_ms: 100,
         };
 
         let json = serde_json::to_string_pretty(&result).unwrap();
+        assert!(json.contains("response"));
         let parsed: TestRunResult = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.status, RunStatus::Passed);
         assert_eq!(parsed.results[0].tool, "search");
+        assert!(parsed.results[0].response.is_some());
+    }
+
+    #[test]
+    fn result_serialization_omits_none_response() {
+        let result = TestRunResult {
+            status: RunStatus::Passed,
+            results: vec![ToolTestResult {
+                tool: "preflight".to_string(),
+                passed: true,
+                schema_valid: None,
+                deterministic: None,
+                stream_chunks: None,
+                errors: vec![],
+                response: None,
+                elapsed_ms: 0,
+            }],
+            elapsed_ms: 10,
+        };
+
+        let json = serde_json::to_string_pretty(&result).unwrap();
+        assert!(!json.contains("response"));
     }
 }

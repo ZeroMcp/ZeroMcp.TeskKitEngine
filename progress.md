@@ -1,6 +1,6 @@
 # ZeroMCP TestKit Engine — Progress
 
-## Current Status: Milestones 1–4 Complete + M6 Recording/Replay
+## Current Status: Phase 1 Complete (Rust Engine) + Phase 2 .NET DSL In Progress
 
 ### Milestone 1: Foundation (COMPLETE)
 
@@ -96,8 +96,8 @@
 | `protocol/client.rs` | 8 | Handshake, tools_list (+ pagination), tools_call, error propagation, raw_request, close |
 | `transport/mock.rs` | 3 | Send/receive, closed state, empty queue |
 | `transport/mod.rs` + `http.rs` | 9 | URL parsing, SSE parsing |
-| `engine/executor.rs` | 15 | Simple pass, schema, determinism pass/fail, error-path (3), timeout, multi-case, isError, **protocol validation, metadata validation, auto error tests, frame validation, auto test generation** |
-| `engine/result.rs` | 2 | Exit codes, serialization |
+| `engine/executor.rs` | 18 | Simple pass, schema, determinism pass/fail, error-path (3), timeout, multi-case, isError, protocol validation, metadata validation, auto error tests, frame validation, auto test generation, **response field populated (success, error path, preflight none)** |
+| `engine/result.rs` | 3 | Exit codes, serialization, **response field omitted when None** |
 | `validators/determinism.rs` | 11 | Identical, different, too-few, **ignore_paths (timestamp, nested, multiple, still-fails), remove_at_pointer (key, nested, array), simple_jsonpath_to_pointer** |
 | `validators/error_path.rs` | 5 | Error code correct/wrong, success-when-error, is_error |
 | `validators/metadata.rs` | 8 | Valid, empty name, spaces, missing desc, null schema, non-object schema, zero tools, multi-tool |
@@ -106,7 +106,7 @@
 | `recording/recorder.rs` | 1 | Record + serialize |
 | `recording/recording_transport.rs` | 3 | Records messages, message passthrough, close propagation |
 | `diff/baseline.rs` | 4 | Added/removed/changed/no-change |
-| **Total** | **107** | |
+| **Total** | **111** | |
 
 ---
 
@@ -118,7 +118,7 @@
   $env:PATH += ";C:\mingw\mingw64"
   ```
 - Edition: Rust 2024 (requires Rust 1.85+)
-- 107 unit tests pass as of Milestone 4 + M6 completion
+- 111 unit tests pass (including response field tests)
 
 ## File Structure
 
@@ -147,7 +147,7 @@ src/
     mock.rs                   Scriptable mock transport for testing
   engine/
     executor.rs               Test execution orchestrator (protocol validation, metadata validation, auto error tests)
-    result.rs                 TestRunResult, ToolTestResult, ValidationError, ErrorCategory (+Metadata)
+    result.rs                 TestRunResult, ToolTestResult (+response), ValidationError, ErrorCategory (+Metadata)
   validators/
     schema.rs                 JSON Schema validation
     determinism.rs            Multi-run comparison with full JSONPath ignore_paths support
@@ -164,3 +164,30 @@ src/
   diff/
     baseline.rs               Baseline drift detection
 ```
+
+---
+
+## Phase 2: .NET DSL (ZeroMcp.TestKit)
+
+**Location:** `C:\Users\Matt.Anderson\TestKit\Engine\dotnet`
+**Repo:** `https://github.com/ZeroMcp/ZeroMcp.TestKit.dotnet`
+
+### Status: Core Implementation Complete
+
+- [x] Solution structure: `ZeroMcp.TestKit.slnx` with 3 projects
+- [x] JSON models: `McpTestDefinition`, `McpTestCase`, `McpExpectation`, `McpTestConfig`, `McpTestRunResult`, `McpToolTestResult`, `McpValidationError`
+- [x] `EngineResolver`: locates mcptest binary (env var → NuGet native → PATH)
+- [x] `McpTestRunner`: invokes mcptest as child process, serializes definition, parses result
+- [x] `McpTestException`: structured error type with failure details from engine
+- [x] Fluent API: `McpTest.Server().Tool().WithParams().ExpectSchemaMatch().RunAsync()`
+- [x] `McpServerBuilder`: timeout, determinism runs, protocol/metadata/auto-error config
+- [x] `McpToolBuilder`: params, schema, determinism, ignore paths, streaming, error path, timeout
+- [x] xUnit integration: `[McpFact]`, `[McpTheory]`, `McpAssert` helpers
+- [x] `McpToolTestResult.Response` — raw JSON response from engine for value assertions
+- [x] `McpAssert.ResponseContains`, `ResponseHasProperty`, `GetResponse` — response inspection helpers
+- [x] `McpFluentAssertions` — chainable extensions: `HasReturnProperty`, `HasReturnValue`
+- [x] 33 unit tests passing (models, fluent API, exception, engine resolver, response assertions)
+- [x] README.md created
+- [ ] NuGet packaging with native engine binary
+- [ ] NUnit / MSTest integration packages
+- [ ] Integration tests with live mcptest engine

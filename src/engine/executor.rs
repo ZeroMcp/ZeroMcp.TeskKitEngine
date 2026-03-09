@@ -48,6 +48,7 @@ impl TestExecutor {
                         deterministic: None,
                         stream_chunks: None,
                         errors: protocol_errors,
+                        response: None,
                         elapsed_ms: 0,
                     });
                 }
@@ -71,6 +72,7 @@ impl TestExecutor {
                     deterministic: None,
                     stream_chunks: None,
                     errors: meta_errors,
+                    response: None,
                     elapsed_ms: 0,
                 });
             }
@@ -105,6 +107,7 @@ impl TestExecutor {
                             message: format!("{:#}", e),
                             context: None,
                         }],
+                        response: None,
                         elapsed_ms: elapsed,
                     },
                 };
@@ -155,6 +158,7 @@ impl TestExecutor {
                         message: format!("{:#}", e),
                         context: None,
                     }],
+                    response: None,
                     elapsed_ms: elapsed,
                 },
                 Err(_) => ToolTestResult {
@@ -171,6 +175,7 @@ impl TestExecutor {
                         ),
                         context: None,
                     }],
+                    response: None,
                     elapsed_ms: elapsed,
                 },
             };
@@ -236,6 +241,7 @@ impl TestExecutor {
                 deterministic: None,
                 stream_chunks: None,
                 errors,
+                response: serde_json::to_value(&response).ok(),
                 elapsed_ms: 0,
             });
         }
@@ -313,6 +319,7 @@ impl TestExecutor {
             deterministic: deterministic_result,
             stream_chunks: None,
             errors,
+            response: Some(response_value),
             elapsed_ms: 0,
         })
     }
@@ -363,6 +370,7 @@ impl TestExecutor {
             deterministic: None,
             stream_chunks: None,
             errors,
+            response: serde_json::to_value(&response).ok(),
             elapsed_ms: 0,
         })
     }
@@ -923,5 +931,106 @@ mod tests {
         assert!(cases.iter().any(|c| c.tool == "alpha" && c.expect.expect_error));
         assert!(cases.iter().any(|c| c.tool == "beta" && c.expect.expect_error));
         assert_eq!(cases.len(), 3); // 1 unknown + 2 malformed
+    }
+
+    #[tokio::test]
+    async fn response_field_populated_on_successful_call() {
+        let mut mock = MockTransport::new();
+        mock.push_response(init_response(1));
+        mock.push_response(tools_list_response(
+            2,
+            serde_json::json!([{
+                "name": "echo",
+                "inputSchema": { "type": "object" }
+            }]),
+        ));
+        mock.push_response(tool_call_response(3, "hello world"));
+
+        let mut client = ready_client(mock).await;
+
+        let def = make_definition(vec![make_test_case("echo", Expectation::default())]);
+
+        let executor = TestExecutor::new(def);
+        let result = executor.run(&mut client, None).await.unwrap();
+
+        assert!(result.results[0].passed);
+        let response = result.results[0].response.as_ref().expect("response should be populated");
+        let content = response.get("content").expect("should have content");
+        assert!(content.is_array());
+        let text = content[0].get("text").and_then(|t| t.as_str());
+        assert_eq!(text, Some("hello world"));
+    }
+
+    #[tokio::test]
+    async fn response_field_populated_on_error_path() {
+        let mut mock = MockTransport::new();
+        mock.push_response(init_response(1));
+        mock.push_response(tools_list_response(2, serde_json::json!([])));
+        mock.push_response(error_response(3, -32601, "Method not found"));
+
+        let mut client = ready_client(mock).await;
+
+        let def = make_definition(vec![make_test_case(
+            "nonexistent",
+            Expectation {
+                expect_error: true,
+                ..Default::default()
+            },
+        )]);
+
+        let executor = TestExecutor::new(def);
+        let result = executor.run(&mut client, None).await.unwrap();
+
+        assert!(result.results[0].passed);
+        let response = result.results[0].response.as_ref().expect("response should be populated on error path");
+        assert!(response.get("error").is_some() || response.get("result").is_some(),
+            "response should contain error or result field");
+    }
+
+    #[tokio::test]
+    async fn response_field_none_for_preflight() {
+        use crate::protocol::mcp::{Implementation, InitializeResult, ServerCapabilities};
+
+        let mut mock = MockTransport::new();
+        mock.push_response(init_response(1));
+        mock.push_response(tools_list_response(
+            2,
+            serde_json::json!([{"name": "echo", "inputSchema": {"type": "object"}}]),
+        ));
+        mock.push_response(tool_call_response(3, "ok"));
+
+        let mut client = ready_client(mock).await;
+
+        let bad_init = InitializeResult {
+            protocol_version: String::new(),
+            capabilities: ServerCapabilities::default(),
+            server_info: Implementation {
+                name: String::new(),
+                version: "1.0".to_string(),
+            },
+            instructions: None,
+        };
+
+        let config = TestConfig {
+            validate_protocol: true,
+            ..Default::default()
+        };
+        let def = make_definition_with_config(
+            vec![make_test_case("echo", Expectation::default())],
+            config,
+        );
+
+        let executor = TestExecutor::new(def);
+        let result = executor.run(&mut client, Some(&bad_init)).await.unwrap();
+
+        let protocol_result = result
+            .results
+            .iter()
+            .find(|r| r.tool == "__protocol_handshake__")
+            .expect("Should have a protocol result");
+        assert!(protocol_result.response.is_none(), "Pre-flight results should not have a response");
+
+        let echo_result = result.results.iter().find(|r| r.tool == "echo").expect("Should have echo result");
+        assert!(echo_result.response.is_some(), "Tool call results should have a response");
     }
 }
