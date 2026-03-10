@@ -90,6 +90,7 @@ impl JsonRpcNotification {
 }
 
 impl JsonRpcResponse {
+    #[allow(dead_code)]
     pub fn is_error(&self) -> bool {
         self.error.is_some()
     }
@@ -108,6 +109,7 @@ impl From<i64> for RequestId {
 }
 
 /// Standard JSON-RPC error codes.
+#[allow(dead_code)]
 pub mod error_codes {
     pub const PARSE_ERROR: i64 = -32700;
     pub const INVALID_REQUEST: i64 = -32600;

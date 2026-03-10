@@ -84,10 +84,10 @@ fn jsonpath_to_pointers(jsonpath: &str, value: &Value) -> Vec<String> {
 
     // Fallback: convert simple dot-notation JSONPath to JSON Pointer.
     // Handles: $.foo.bar -> /foo/bar, $.foo[0].bar -> /foo/0/bar
-    if let Some(pointer) = simple_jsonpath_to_pointer(jsonpath) {
-        if value.pointer(&pointer).is_some() {
-            return vec![pointer];
-        }
+    if let Some(pointer) = simple_jsonpath_to_pointer(jsonpath)
+        && value.pointer(&pointer).is_some()
+    {
+        return vec![pointer];
     }
 
     vec![]
@@ -173,10 +173,10 @@ fn remove_at_pointer(value: &mut Value, pointer: &str) {
             map.remove(last_key);
         }
         Value::Array(arr) => {
-            if let Ok(idx) = last_key.parse::<usize>() {
-                if idx < arr.len() {
-                    arr.remove(idx);
-                }
+            if let Ok(idx) = last_key.parse::<usize>()
+                && idx < arr.len()
+            {
+                arr.remove(idx);
             }
         }
         _ => {}

@@ -36,22 +36,22 @@ impl TestExecutor {
         let mut any_failed = false;
 
         // --- Protocol validation (pre-flight) ---
-        if self.config.validate_protocol {
-            if let Some(init) = init_result {
-                let protocol_errors = validators::protocol_val::validate_initialize_response(init);
-                if !protocol_errors.is_empty() {
-                    any_failed = true;
-                    results.push(ToolTestResult {
-                        tool: "__protocol_handshake__".to_string(),
-                        passed: false,
-                        schema_valid: None,
-                        deterministic: None,
-                        stream_chunks: None,
-                        errors: protocol_errors,
-                        response: None,
-                        elapsed_ms: 0,
-                    });
-                }
+        if self.config.validate_protocol
+            && let Some(init) = init_result
+        {
+            let protocol_errors = validators::protocol_val::validate_initialize_response(init);
+            if !protocol_errors.is_empty() {
+                any_failed = true;
+                results.push(ToolTestResult {
+                    tool: "__protocol_handshake__".to_string(),
+                    passed: false,
+                    schema_valid: None,
+                    deterministic: None,
+                    stream_chunks: None,
+                    errors: protocol_errors,
+                    response: None,
+                    elapsed_ms: 0,
+                });
             }
         }
 

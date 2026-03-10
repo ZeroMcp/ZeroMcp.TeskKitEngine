@@ -7,6 +7,7 @@ pub const METHOD_INITIALIZE: &str = "initialize";
 pub const METHOD_INITIALIZED: &str = "notifications/initialized";
 pub const METHOD_TOOLS_LIST: &str = "tools/list";
 pub const METHOD_TOOLS_CALL: &str = "tools/call";
+#[allow(dead_code)]
 pub const METHOD_PING: &str = "ping";
 
 // --- Initialize ---

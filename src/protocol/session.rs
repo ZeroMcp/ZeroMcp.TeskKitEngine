@@ -105,6 +105,7 @@ impl Session {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn has_tools_capability(&self) -> bool {
         self.server_capabilities
             .as_ref()

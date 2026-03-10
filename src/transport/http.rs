@@ -64,11 +64,11 @@ impl McpTransport for HttpTransport {
         let status = response.status();
         tracing::debug!(status = %status, "HTTP response status");
 
-        if let Some(session_id) = response.headers().get("mcp-session") {
-            if let Ok(id) = session_id.to_str() {
-                self.session_id = Some(id.to_string());
-                tracing::debug!(session_id = %id, "Captured session ID");
-            }
+        if let Some(session_id) = response.headers().get("mcp-session")
+            && let Ok(id) = session_id.to_str()
+        {
+            self.session_id = Some(id.to_string());
+            tracing::debug!(session_id = %id, "Captured session ID");
         }
 
         if is_notification {

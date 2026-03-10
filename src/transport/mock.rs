@@ -15,6 +15,12 @@ pub struct MockTransport {
     closed: bool,
 }
 
+impl Default for MockTransport {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockTransport {
     pub fn new() -> Self {
         Self {

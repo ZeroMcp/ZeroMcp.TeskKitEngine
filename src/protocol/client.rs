@@ -198,6 +198,7 @@ impl McpClient {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn session(&self) -> &Session {
         &self.session
     }

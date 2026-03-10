@@ -1,4 +1,5 @@
 pub mod http;
+#[cfg(test)]
 pub mod mock;
 pub mod stdio;
 
@@ -22,6 +23,7 @@ pub enum TransportError {
     Closed,
 
     #[error("Timeout waiting for response")]
+    #[allow(dead_code)]
     Timeout,
 
     #[error("IO error: {0}")]

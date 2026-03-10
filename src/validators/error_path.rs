@@ -8,10 +8,10 @@ fn is_error_response(response: &JsonRpcResponse) -> bool {
     if response.error.is_some() {
         return true;
     }
-    if let Some(result) = &response.result {
-        if let Some(is_error) = result.get("isError").and_then(|v| v.as_bool()) {
-            return is_error;
-        }
+    if let Some(result) = &response.result
+        && let Some(is_error) = result.get("isError").and_then(|v| v.as_bool())
+    {
+        return is_error;
     }
     false
 }
